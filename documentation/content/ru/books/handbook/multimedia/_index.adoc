@@ -1,0 +1,730 @@
+---
+description: 'Глава о мультимедиа предоставляет обзор поддержки мультимедиа в FreeBSD'
+next: books/handbook/kernelconfig
+params:
+  path: /books/handbook/multimedia/
+part: 'Часть II. Стандартные задачи'
+prev: books/handbook/desktop
+showBookMenu: true
+tags: ["multimedia", "sound card", "Audio players", "scanner", "SANE", "Video players", "Conferencing and Meetings", "Setting Up the Webcam"]
+title: 'Глава 9. Мультимедиа'
+weight: 12
+---
+
+[[multimedia]]
+= Мультимедиа
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: 9
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/handbook/multimedia/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+[[multimedia-synopsis]]
+== Обзор
+
+Глава о мультимедиа предоставляет обзор поддержки мультимедиа в FreeBSD. Мультимедийные приложения и технологии стали неотъемлемой частью современных вычислений, и FreeBSD обеспечивает надежную и стабильную поддержку широкого спектра мультимедийного оборудования и программного обеспечения. В этой главе рассматриваются различные мультимедийные компоненты, такие как аудио, видео и обработка изображений. Также обсуждаются различные медиаформаты и кодеки, а также инструменты и приложения для создания и воспроизведения мультимедиа. Дополнительно глава охватывает настройку мультимедийной системы, устранение неполадок и оптимизацию. Будь вы энтузиастом мультимедиа или профессиональным создателем контента, FreeBSD предлагает надежную платформу для мультимедийной работы. Эта глава призвана помочь максимально использовать мультимедийные возможности FreeBSD, предоставляя полезную информацию и практические примеры для начала работы.
+
+[[sound-setup]]
+== Настройка звуковой карты
+
+По умолчанию FreeBSD автоматически определяет звуковую карту, используемую в системе. FreeBSD поддерживает широкий спектр звуковых карт. Список поддерживаемых звуковых карт можно найти в man:sound[4].
+
+[NOTE]
+====
+Для загрузки модуля звуковой карты необходимо только в том случае, если FreeBSD не определила его корректно.
+====
+
+Где неизвестно, какая звуковая карта установлена в системе или какой модуль использовать, можно загрузить метадрайвер `snd_driver`, выполнив следующую команду:
+
+[source, shell]
+....
+# kldload snd_driver
+....
+
+В качестве альтернативы, для загрузки драйвера как модуля во время загрузки, добавьте следующую строку в [.filename]#/boot/loader.conf#:
+
+[.programlisting]
+....
+snd_driver_load="YES"
+....
+
+[[sound-testing]]
+=== Тестирование звука
+
+Чтобы подтвердить, что звуковая карта обнаружена, можно выполнить следующую команду:
+
+[source, shell]
+....
+% dmesg | grep pcm
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+pcm0: <Conexant CX20561 (Hermosa) (Analog 2.0+HP/2.0)> at nid 26,22 and 24 on hdaa0
+pcm1: <Conexant CX20561 (Hermosa) (Internal Analog Mic)> at nid 29 on hdaa0
+....
+
+Состояние звуковой карты также можно проверить с помощью этой команды:
+
+[source, shell]
+....
+# cat /dev/sndstat
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+Installed devices:
+pcm0: <Conexant CX20561 (Hermosa) (Analog 2.0+HP/2.0)> (play/rec) default
+pcm1: <Conexant CX20561 (Hermosa) (Internal Analog Mic)> (rec)
+....
+
+Если в списке нет устройств `pcm`, проверьте, что загружен правильный драйвер устройства. Если всё в порядке, звуковая карта должна теперь работать в FreeBSD.
+
+man:beep[1] может использоваться для создания звука, подтверждающего, что звуковая карта работает:
+
+[source, shell]
+....
+% beep
+....
+
+[[sound-mixer]]
+=== Микшер
+
+В FreeBSD существуют различные утилиты для установки и отображения значений микшера звуковой карты, работающие на основе FreeBSD Sound System:
+
+.Поддерживаемые пакеты микшера
+[options="header", cols="1,1,1,1"]
+|===
+| Имя | Лицензия | Пакет | `Toolkit`
+
+| man:mixer[8]
+| BSD-2
+| Включено в базовую систему
+| CLI
+
+| dsbmixer
+| BSD-2
+| package:audio/dsbmixer[]
+| Qt
+
+| Виджет аудио KDE Plasma
+| GPL 2.0
+| package:audio/plasma6-plasma-pa[]
+| Qt
+
+| mixertui
+| BSD-2
+| package:audio/mixertui[]
+| TUI
+
+|===
+
+[[graphics-card-sound]]
+=== Звук графической карты
+
+Графические карты часто оснащены собственными встроенными звуковыми устройствами, и может быть неясно, какое из них используется по умолчанию. Чтобы это проверить, выполните команду `dmesg` и найдите записи `pcm`, чтобы определить, как система перечисляет выходы. Выполните следующую команду:
+
+[source, shell]
+....
+% dmesg | grep pcm
+....
+
+Вывод выглядит примерно так:
+
+[.programlisting]
+....
+pcm0: <HDA NVIDIA (Unknown) PCM #0 DisplayPort> at cad 0 nid 1 on hdac0
+pcm1: <HDA NVIDIA (Unknown) PCM #0 DisplayPort> at cad 1 nid 1 on hdac0
+pcm2: <HDA NVIDIA (Unknown) PCM #0 DisplayPort> at cad 2 nid 1 on hdac0
+pcm3: <HDA NVIDIA (Unknown) PCM #0 DisplayPort> at cad 3 nid 1 on hdac0
+hdac1: HDA Codec #2: Realtek ALC889
+pcm4: <HDA Realtek ALC889 PCM #0 Analog> at cad 2 nid 1 on hdac1
+pcm5: <HDA Realtek ALC889 PCM #1 Analog> at cad 2 nid 1 on hdac1
+pcm6: <HDA Realtek ALC889 PCM #2 Digital> at cad 2 nid 1 on hdac1
+pcm7: <HDA Realtek ALC889 PCM #3 Digital> at cad 2 nid 1 on hdac1
+....
+
+Графическая карта (NVIDIA(R)) была перечислена до звуковой карты (Realtek(R)), при этом звуковая карта отображается как `pcm4`. Систему можно настроить на использование звуковой карты в качестве устройства по умолчанию, выполнив следующую команду:
+
+[source, shell]
+....
+# sysctl hw.snd.default_unit=4
+....
+
+Чтобы сделать это изменение постоянным, добавьте следующую строку в [.filename]#/etc/sysctl.conf#:
+
+[.programlisting]
+....
+hw.snd.default_unit=4
+....
+
+[[automatically-switching-headphones]]
+=== Автоматическое переключение на наушники
+
+Некоторые системы могут испытывать трудности при переключении между аудиовыходами, но, к счастью, FreeBSD позволяет настроить автоматическое переключение в [.filename]#device.hints#.
+
+Определите, как система перечисляет аудиовыходы, выполнив следующую команду:
+
+[source, shell]
+....
+% dmesg | grep pcm
+....
+
+Вывод выглядит примерно так:
+
+[.programlisting]
+....
+pcm0: <Realtek ALC892 Analog> at nid 23 and 26 on hdaa0
+pcm1: <Realtek ALC892 Right Analog Headphones> at nid 22 on hdaa0
+....
+
+Добавьте следующие строки в файл [.filename]#/boot/device.hints#:
+
+[.programlisting]
+....
+hint.hdac.0.cad0.nid22.config="as=1 seq=15 device=Headphones" 
+hint.hdac.0.cad0.nid26.config="as=2 seq=0 device=speakers"
+....
+
+[NOTE]
+====
+Имейте в виду, что эти значения приведены для указанного выше примера. Они могут отличаться в зависимости от системы.
+====
+
+[[troubleshooting-sound]]
+=== Устранение неполадок со звуком
+
+Некоторые распространённые сообщения об ошибках и их решения:
+
+[[multimedia-sound-common-error-messages]]
+.Общие сообщения об ошибках
+[cols="1,1", frame="none", options="header"]
+|===
+| Ошибка
+| Решение
+
+|`xxx: can't open /dev/dsp!`
+|Наберите `fstat \| grep dsp` для проверки, удерживает ли другое приложение устройство открытым. Основные источники проблем — это `esound` и поддержка звука в `KDE`.
+|===
+
+Программы, использующие package:audio/pulseaudio[], могут потребовать перезапуска демона package:audio/pulseaudio[] для применения изменений в `hw.snd.default_unit`. В качестве альтернативы, настройки package:audio/pulseaudio[] можно изменить на лету. man:pacmd[1] открывает командное соединение с демоном package:audio/pulseaudio[]:
+
+[source, shell]
+....
+# pacmd
+Welcome to PulseAudio 14.2! Use "help" for usage information.
+>>>
+....
+
+Следующая команда изменяет устройство вывода по умолчанию на карту номер 4, как в предыдущем примере:
+
+[.programlisting]
+....
+set-default-sink 4
+....
+
+[WARNING]
+====
+Не используйте команду `exit` для выхода из интерфейса командной строки. Это приведёт к завершению работы демона package:audio/pulseaudio[]. Вместо этого используйте kbd:[Ctrl+D].
+====
+
+[[audio-ports]]
+== Аудиоплееры
+
+В этом разделе представлено некоторое программное обеспечение из Коллекции портов FreeBSD, которое можно использовать для воспроизведения аудио.
+
+.Пакеты аудиоплееров
+[options="header", cols="1,1,1,1"]
+|===
+| Имя | Лицензия | Пакет | `Toolkit`
+
+| Elisa
+| LGPL 3.0
+| package:audio/elisa[]
+| Qt
+
+| GNOME Music
+| GPL 2.0
+| package:audio/gnome-music[]
+| GTK+
+
+| Audacious
+| BSD-2
+| package:multimedia/audacious[]
+| Qt
+
+| MOC (music on console)
+| GPL 2.0
+| package:audio/moc[]
+| TUI
+
+|===
+
+[[elisa]]
+=== Elisa
+
+Elisa — это музыкальный проигрыватель, разработанный сообществом KDE, который стремится быть простым и приятным в использовании.
+
+Для установки Elisa выполните:
+
+[source, shell]
+....
+# pkg install elisa
+....
+
+[[gnome-music]]
+=== GNOME Music
+
+GNOME Music - это новое приложение для воспроизведения музыки в среде GNOME. Оно сочетает в себе элегантный и захватывающий интерфейс для просмотра музыки с простым и интуитивно понятным управлением.
+
+Для установки GNOME Music выполните:
+
+[source, shell]
+....
+# pkg install gnome-music
+....
+
+[[audacious]]
+=== Audacious
+
+Audacious — это аудиоплеер с открытым исходным кодом. Потомок XMMS, он воспроизводит музыку так, как вам нужно, не отнимая ресурсы компьютера у других задач.
+
+Для установки Audacious выполните:
+
+[source, shell]
+....
+# pkg install audacious-qt6 audacious-plugins-qt6
+....
+
+[NOTE]
+====
+Audacious изначально поддерживает OSS, но его необходимо настроить в параметрах на вкладке Audio.
+====
+
+[[moc-music-on-console]]
+=== MOC (music on console)
+
+MOC (music on console) — это консольный аудиоплеер, созданный для удобства и эффективности использования.
+
+MOC воспроизводит музыку плавно, независимо от нагрузки на систему или ввод-вывод, поскольку обрабатывает выходной буфер в отдельном потоке. Он не создаёт промежутков между файлами, потому что следующий файл для воспроизведения предварительно кэшируется во время проигрывания текущего файла.
+
+Для установки MOC (music on console) выполните:
+
+[source, shell]
+....
+# pkg install moc
+....
+
+[[video-ports]]
+== Видеоплееры
+
+В этом разделе представлено некоторое программное обеспечение из Коллекции портов FreeBSD, которое можно использовать для воспроизведения видео.
+
+.Пакеты видеоплееров
+[options="header", cols="1,1,1,1"]
+|===
+| Имя | Лицензия | Пакет | `Toolkit`
+
+| MPlayer
+| GPL 2.0
+| package:multimedia/mplayer[]
+| CLI
+
+| SMPlayer
+| GPL 2.0
+| package:multimedia/smplayer[]
+| Qt
+
+| VLC media player
+| GPL 2.0
+| package:multimedia/vlc[]
+| Qt
+
+| Kodi (XBMC) 
+| GPL 2.0
+| package:multimedia/kodi[]
+| X11
+
+|===
+
+[[mplayer]]
+=== MPlayer
+
+MPlayer — это мультимедийный проигрыватель и набор инструментов для кодирования, который работает на многих платформах и поддерживает командную строку. Он воспроизводит огромное количество различных форматов файлов и кодеков, включая популярные потоки DivX, XviD, H.264, а также DVD и SVCD, вместе со многими распространёнными аудиокодеками.
+
+Для установки MPlayer выполните:
+
+[source, shell]
+....
+# pkg install mplayer
+....
+
+Примеры работы MPlayer можно найти в man:mplayer[1].
+
+[[smplayer]]
+=== SMPlayer
+
+SMPlayer предназначен быть полноценным фронтендом для MPlayer, начиная с базовых функций, таких как воспроизведение видео, DVD и VCD, до более продвинутых возможностей, включая поддержку фильтров MPlayer и многое другое.
+
+Для установки SMPlayer выполните:
+
+[source, shell]
+....
+# pkg install smplayer
+....
+
+[[vlc]]
+=== VLC media player
+
+VLC media player — это высокопортативный мультимедийный проигрыватель, поддерживающий различные аудио- и видеоформаты (MPEG-1, MPEG-2, MPEG-4, DivX, mp3, ogg и другие), а также DVD, VCD и различные протоколы потокового вещания. Он также может использоваться в качестве сервера для трансляции в режиме unicast или multicast по IPv4 или IPv6 в высокоскоростных сетях. VLC также умеет транскодировать медиафайлы на лету для потоковой передачи или сохранения на диск.
+
+Для установки VLC выполните:
+
+[source, shell]
+....
+# pkg install vlc
+....
+
+[[kodi]]
+=== Kodi (XBMC)
+
+Kodi (ранее известный как XBMC) — это бесплатный и открытый кроссплатформенный медиаплеер и развлекательный центр. Он позволяет пользователям воспроизводить и просматривать большинство видео, музыки, подкастов и других цифровых медиафайлов с локальных и сетевых носителей, а также из интернета.
+
+Для установки Kodi выполните:
+
+[source, shell]
+....
+# pkg install kodi
+....
+
+[[conferencing-meetings]]
+== Конференции и встречи
+
+Рабочая среда FreeBSD может быть использована для участия в видеоконференциях. В этом разделе будет объяснено, как настроить веб-камеру и какие приложения для видеоконференций поддерживаются в FreeBSD.
+
+[[webcam-setup]]
+=== Настройка веб-камеры
+
+Для предоставления FreeBSD доступа к веб-камере и её настройки необходимо установить определённые утилиты:
+
+* package:multimedia/webcamd[] — это демон, который обеспечивает работу сотен различных USB-вебкамер и DVB USB-устройств.
+* package:multimedia/pwcview[] — это приложение, которое можно использовать для просмотра видеопотока с веб-камеры.
+
+Для установки необходимых утилит выполните:
+
+[source, shell]
+....
+# pkg install webcamd pwcview
+....
+
+Включите службу man:webcamd[8] в `/etc/rc.conf`, чтобы она запускалась при загрузке системы:
+
+[source, shell]
+....
+# sysrc webcamd_enable=YES
+....
+
+Пользователь должен состоять в группе `webcamd`. Чтобы добавить пользователя в группу `webcamd`, выполните следующую команду:
+
+[source, shell]
+....
+# pw groupmod webcamd -m username
+....
+
+Поскольку package:multimedia/webcamd[] требует модуль man:cuse[3], этот модуль должен быть загружен выполнением следующей команды:
+
+[source, shell]
+....
+# kldload cuse
+....
+
+Чтобы загрузить man:cuse[3] при запуске системы, выполните команду:
+
+[source, shell]
+....
+# sysrc kld_list+=cuse
+....
+
+После установки утилит список доступных веб-камер можно просмотреть с помощью man:webcamd[8]:
+
+[source, shell]
+....
+# webcamd -l
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+webcamd [-d ugen0.2] -N SunplusIT-Inc-HP-TrueVision-HD-Camera -S unknown -M 0 <.>
+webcamd [-d ugen1.3] -N Realtek-802-11n-WLAN-Adapter -S 00e04c000001 -M 0
+....
+<.> Доступные веб-камеры
+
+Настройте доступную веб-камеру, выполнив следующую команду:
+
+[source, shell]
+....
+# sysrc webcamd_0_flags="-d ugen0.2" <.>
+....
+
+[NOTE]
+====
+Обратите внимание, что если это веб-камера с поддержкой plug-and-play USB, то изменение USB-порта, к которому она подключена, приведёт к изменению вывода команды `webcamd -l`, и запись в rc.conf может потребовать обновления. Для ноутбуков со встроенными USB-веб-камерами это не должно быть проблемой.
+====
+
+Сервис man:webcamd[8] должен быть запущен выполнением следующей команды:
+
+[source, shell]
+....
+# service webcamd start
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+Starting webcamd.
+webcamd 1616 - - Attached to ugen0.2[0]
+....
+
+package:multimedia/pwcview[] можно использовать для проверки правильной работы веб-камеры. Следующая команда может быть использована для запуска package:multimedia/pwcview[]:
+
+[source, shell]
+....
+% pwcview -f 30 -s vga
+....
+
+Тогда package:multimedia/pwcview[] отобразит изображение с веб-камеры:
+
+image::pwcview.png["pwcview с примером из книги *Absolute FreeBSD 3rd edition*"]
+
+[[meetings-software-status]]
+=== Статус программного обеспечения для встреч
+
+FreeBSD в настоящее время поддерживает следующие инструменты для проведения видеоконференций.
+
+.Установка программного обеспечения
+[options="header", cols="1,1,1,1"]
+|===
+| Имя | Статус Firefox | Статус Chromium | Website
+
+| Microsoft Teams
+| Не работает
+| Работает
+| link:https://teams.live.com[]
+
+| Google Meet
+| Не работает
+| Работает
+| link:https://meet.google.com/[]
+
+| Zoom
+| Работает
+| Работает
+| link:https://zoom.us[]
+
+| Jitsi
+| Не работает
+| Работает
+| link:https://meet.jit.si/[]
+
+| BigBlueButton
+| Не работает
+| Работает
+| link:https://bigbluebutton.org/[]
+
+|===
+
+[[scanners]]
+== Сканеры изображений
+
+В FreeBSD доступ к сканерам изображений обеспечивается через link:http://www.sane-project.org[SANE (Scanner Access Now Easy)], который доступен в Коллекции портов FreeBSD.
+
+[[scanners-kernel-usb]]
+=== Проверка сканера
+
+Прежде чем пытаться выполнить любую настройку, важно убедиться, что сканер поддерживается SANE.
+
+При подключённом сканере выполните следующую команду, чтобы получить список всех подключённых USB-устройств:
+
+[source, shell]
+....
+# usbconfig list
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+ugen4.2: <LITE-ON Technology USB NetVista Full Width Keyboard.> at usbus4, cfg=0 md=HOST spd=LOW (1.5Mbps) pwr=ON (70mA)
+ugen4.3: <Logitech USB Optical Mouse> at usbus4, cfg=0 md=HOST spd=LOW (1.5Mbps) pwr=ON (100mA)
+ugen3.2: <HP Deskjet 1050 J410 series> at usbus3, cfg=0 md=HOST spd=HIGH (480Mbps) pwr=ON (2mA)
+....
+
+Выполните следующую команду для получения `idVendor` и `idProduct`:
+
+[source, shell]
+....
+# usbconfig -d 3.2 dump_device_desc
+....
+
+[NOTE]
+====
+Обратите внимание, что сканер является устройством plug-and-play, и изменение USB-порта, к которому он подключен, приведёт к изменению вывода команды `usbconfig list`.
+====
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+ugen3.2: <HP Deskjet 1050 J410 series> at usbus3, cfg=0 md=HOST spd=HIGH (480Mbps) pwr=ON (2mA)
+
+bLength = 0x0012
+bDescriptorType = 0x0001
+bcdUSB = 0x0200
+bDeviceClass = 0x0000  <Probed by interface class>
+bDeviceSubClass = 0x0000
+bDeviceProtocol = 0x0000
+bMaxPacketSize0 = 0x0040
+idVendor = 0x03f0
+idProduct = 0x8911
+bcdDevice = 0x0100
+iManufacturer = 0x0001  <HP>
+iProduct = 0x0002  <Deskjet 1050 J410 series>
+bNumConfigurations = 0x0001
+....
+
+После получения `idVendor` и `idProduct` необходимо проверить в link:http://www.sane-project.org/lists/sane-mfgs-cvs.html[списке поддерживаемых устройств SANE], поддерживается ли сканер, выполнив фильтрацию по idProduct.
+
+[[_sane_configuration]]
+=== Настройка SANE
+
+SANE предоставляет доступ к сканеру через бэкенды. Для возможности сканирования в FreeBSD необходимо установить пакет package:graphics/sane-backends[], выполнив следующую команду:
+
+[source, shell]
+....
+# pkg install sane-backends
+....
+
+[TIP]
+====
+Некоторые USB-сканеры требуют загрузки микропрограммы. Как, например, сканер HP, использованный в примере выше, для которого необходимо установить пакет package:print/hplip[].
+====
+
+После установки необходимых пакетов необходимо настроить man:devd[8], чтобы FreeBSD получил доступ к сканеру.
+
+Добавьте файл `saned.conf` в [.filename]#/usr/local/etc/devd/saned.conf# со следующим содержимым:
+
+[.programlisting]
+....
+notify 100 {
+        match "system" "USB";
+        match "subsystem" "INTERFACE";
+        match "type" "ATTACH";
+        match "cdev" "ugen[0-9].[0-9]";
+        match "vendor" "0x03f0"; <.>
+        match "product" "0x8911"; <.>
+        action "chown -L cups:saned /dev/\$cdev && chmod -L 660 /dev/\$cdev";
+};
+....
+
+<.> `vendor`: Это idVendor, полученный ранее при выполнении команды `usbconfig -d 3.2 dump_device_desc`.
+<.> `product`: Это idProduct, полученный ранее при выполнении команды `usbconfig -d 3.2 dump_device_desc`.
+
+После этого необходимо перезапустить man:devd[8], выполнив следующую команду:
+
+[source, shell]
+....
+# service devd restart
+....
+
+Бэкенды SANE включают man:scanimage[1], который можно использовать для вывода списка устройств и выполнения захвата изображения.
+
+Выполните команду man:scanimage[1] с аргументом `-L` для вывода списка сканирующих устройств:
+
+[source, shell]
+....
+# scanimage -L
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+device `hpaio:/usb/Deskjet_1050_J410_series?serial=XXXXXXXXXXXXXX' is a Hewlett-Packard Deskjet_1050_J410_series all-in-one
+....
+
+Если man:scanimage[1] не может идентифицировать сканер, появится следующее сообщение:
+
+[.programlisting]
+....
+No scanners were identified. If you were expecting something different,
+check that the scanner is plugged in, turned on and detected by the
+sane-find-scanner tool (if appropriate). Please read the documentation
+which came with this software (README, FAQ, manpages).
+....
+
+Как только man:scanimage[1] обнаружит сканер, настройка будет завершена, и сканер готов к использованию.
+
+Чтобы активировать службу и запускать её при загрузке, выполните следующую команду:
+
+[source, shell]
+....
+# sysrc saned_enable=YES
+....
+
+В то время как `man:scanimage[1]` можно использовать для захвата изображения из командной строки, часто предпочтительнее применять графический интерфейс для сканирования изображений.
+
+.Графические программы для сканирования
+[options="header", cols="1,1,1"]
+|===
+| Имя | Лицензия | Пакет
+
+| skanlite
+| GPL 2.0
+| graphics/skanlite
+
+| GNOME Simple Scan
+| GPL 3.0
+| graphics/simple-scan
+
+| XSANE
+| GPL 2.0
+| graphics/xsane
+
+|===

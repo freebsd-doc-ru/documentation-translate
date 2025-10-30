@@ -1,0 +1,75 @@
+---
+description: 'Здесь представлен список OpenPGP-ключей должностных лиц FreeBSD'
+next: books/handbook/glossary
+params:
+  path: /books/handbook/pgpkeys/
+part: 'Часть V. Приложения'
+prev: books/handbook/eresources
+showBookMenu: true
+tags: ["OpenGPG", "keys", "officers"]
+title: 'Приложение D. Ключи OpenPGP'
+weight: 44
+---
+
+[appendix]
+[[pgpkeys]]
+= Ключи OpenPGP
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: D
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/handbook/pgpkeys/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:pgpkeys-path: ../../../../../
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+:pgpkeys-path:
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+:pgpkeys-path: ../../../../../
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+:pgpkeys-path: ../../../../../
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+Здесь представлены открытые ключи OpenPGP должностных лиц `FreeBSD.org`. Эти ключи могут быть использованы для проверки подписи или отправки зашифрованной электронной почты одному из должностных лиц. Полный список OpenPGP ключей FreeBSD доступен в статье extref:{pgpkeys}[PGP ключи]. Полный набор ключей можно загрузить по ссылке link:https://docs.FreeBSD.org/pgpkeys/pgpkeys.txt[pgpkeyring.txt].
+
+[[pgpkeys-officers]]
+== Офицеры
+
+=== {security-officer-name} `<{security-officer-email}>`
+include::{pgpkeys-path}static/pgpkeys/security-officer.key[]
+
+=== {core-secretary-name} `<{core-secretary-email}>`
+include::{pgpkeys-path}static/pgpkeys/core-secretary.key[]
+
+=== {portmgr-secretary-name} `<{portmgr-secretary-email}>`
+include::{pgpkeys-path}static/pgpkeys/portmgr-secretary.key[]
+
+=== `{doceng-secretary-email}`
+include::{pgpkeys-path}static/pgpkeys/doceng-secretary.key[]
+
+:sectnums:
+:sectnumlevels: 6

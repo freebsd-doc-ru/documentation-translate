@@ -1,0 +1,127 @@
+---
+description: 'Образец Makefile, который можно использовать для создания нового порта FreeBSD'
+next: books/porters-handbook/order
+params:
+  path: /books/porters-handbook/porting-samplem/
+prev: books/porters-handbook/porting-dads
+showBookMenu: true
+tags: ["sample", "makefile"]
+title: 'Глава 14. Примерный Makefile'
+weight: 14
+---
+
+[[porting-samplem]]
+= Примерный Makefile
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: 14
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/porters-handbook/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+Образец Makefile, который можно использовать для создания нового порта.
+
+Вам рекомендуется следовать этому формату (соблюдая crossref:order[,порядок] следования переменных, пустые строки между разделами, и так далее). Этот формат разработан для того, чтобы важная информация была легко найдена. Обратитесь crossref:testing[, главе о тестировании], чтобы узнать больше о lint, утилитах для форматирования и проверки файла [.filename]#Makefile#.
+
+[.programlisting]
+....
+PORTNAME=	xdvi <1>
+DISTVERSION=	18.2
+CATEGORIES=	print
+MASTER_SITES=	${MASTER_SITE_XCONTRIB} <2>
+MASTER_SITE_SUBDIR=	applications
+PKGNAMEPREFIX=	ja-
+DISTNAME=	xdvi-pl18
+EXTRACT_SUFX=	.tar.Z <3>
+
+PATCH_SITES=	ftp://ftp.sra.co.jp/pub/X11/japanese/ <4>
+PATCHFILES=	xdvi-18.patch1.gz xdvi-18.patch2.gz
+PATCH_DIST_STRIP=	-p1 <5>
+
+MAINTAINER=	asami@FreeBSD.org <6>
+COMMENT=	DVI Previewer for the X Window System
+WWW=		http://xdvi.sourceforge.net/
+
+LICENSE=	BSD2CLAUSE <7>
+LICENSE_FILE=	${WRKSRC}/LICENSE
+
+RUN_DEPENDS=	gs:print/ghostscript <8>
+
+USES=		gmake <9>
+
+<10>
+IS_INTERACTIVE=	yes <11>
+WRKSRC=		${WRKDIR}/xdvi-new <12>
+GNU_CONFIGURE=	yes <13>
+
+<14>
+OPTIONS_DEFINE=	DOCS EXAMPLES FOO
+OPTIONS_DEFAULT=FOO
+OPTIONS_SUB=	yes <15>
+
+FOO_DESC=		Enable foo support
+FOO_CONFIGURE_ENABLE=	foo
+
+<16>
+MY_FAVORITE_RESPONSE=	"yeah, right"
+
+<17>
+pre-fetch:
+	i go fetch something, yeah
+
+post-patch:
+	мне кое-что сделать после применения патча, великолепно
+
+pre-install:
+	и потом еще кое-что перед установкой, ого
+
+.include <bsd.port.mk> <18>
+....
+
+<1> Секция для описания самого порта и его главного сайта: первыми идут переменные PORTNAME и PORTVERSION или DISTVERSION*, на ними CATEGORIES, затем MASTER_SITES, после которой идет MASTER_SITE_SUBDIR. Если нужно, то после нее идут PKGNAMEPREFIX и PKGNAMESUFFIX. Затем следуют DISTNAME, EXTRACT_SUFX и/или DISTFILES, и уже потом, если нужно, EXTRACT_ONLY.
+<2> Не забывайте про завершающую косую черту (`/`), если вы не используете макросы MASTER_SITE_*.
+<3> Задайте это, если исходный код поставляется не в виде стандартного файла ".tar.gz".
+<4> Секция патчей — может быть пустой.
+<5> Если распространяемые патчи не были созданы относительно ${WRKSRC},возможно, это потребуется исправить вручную.
+<6> Сопровождающий; *обязательное поле*! Это человек, который добровольно занимается обновлениями порта и неисправностями при построении, и которому пользователь может направлять вопросы и сообщения об ошибках. Для сохранения как можно более высокого качества Коллекции Портов мы больше не принимаем новые порты, назначенные на "ports@FreeBSD.org".
+<7> Лицензия — не следует оставлять пустым.
+<8> Зависимости — могут быть пустыми.
+<9> Если порт требует GNU make вместо стандартного FreeBSD `make` (man:make[1]) для сборки. Например, некоторым приложениям X требуется выполнение `xmkmf -a`, в этом случае порту понадобится `USES=imake`.
+<10> Этот раздел посвящён другим стандартным переменным [.filename]#bsd.port.mk#, которые не относятся ни к одной из вышеперечисленных категорий.
+<11> Если порты задают интерактивные вопросы во время настройки, сборки, установки.
+<12> Если извлечение происходит в каталог, отличный от `DISTNAME`.
+<13> Если требуется запустить скрипт `configure`, сгенерированный GNU autoconf.
+<14> Этот раздел предназначен для настройки параметров портов.
+<15> Установите `OPTIONS_SUB`, если параметры изменят список файлов в crossref:plist[plist-sub, plist].
+<16> В правилах ниже используются нестандартные переменные.
+<17> Специальные правила, в порядке их вызова фреймворком портов.
+<18> Наконец, эпилог.

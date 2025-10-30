@@ -1,0 +1,869 @@
+---
+description: 'Эта глава описывает, как установить и настроить систему X Windows, которая предоставляет графическое окружение'
+next: books/handbook/wayland
+params:
+  path: /books/handbook/x11/
+part: 'В начале'
+prev: books/handbook/ports
+showBookMenu: true
+tags: ["AMD", "DRM", "Fonts", "Graphics", "Input", "Intel", "Monitor", "NVIDIA", "PRIME", "SCFB", "TrueType", "VESA", "Video", "X11", "Xf86", "Xorg"]
+title: 'Глава 5. Система X Window'
+weight: 7
+---
+
+[[x11]]
+= Система X Window
+:doctype: book
+:toc: macro
+:toclevels: 2
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: 5
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/handbook/x11/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+[[x11-synopsis]]
+== Обзор
+
+crossref:bsdinstall[bsdinstall-synopsis,Установка] FreeBSD с помощью man:bsdinstall[8] не включает автоматическую установку графического интерфейса пользователя. В этой главе описано, как установить и настроить man:Xorg[1], который предоставляет открытую реализацию системы X Window (часто сокращается до X11), используемую для создания графической среды.
+
+Прежде чем читать эту главу, вы должны:
+
+* Знать, как устанавливать дополнительное стороннее программное обеспечение, как описано в crossref:ports[ports,Установка приложений: Пакеты и Порты].
+
+Прочитав эту главу, вы будете знать:
+
+* Как выбрать и установить драйверы для вашего графического процессора (GPU).
+* Различные компоненты X Window System и их взаимодействие.
+* Как установить и настроить сервер X.org.
+* Как установить и настроить шрифты в системе X Windows.
+
+[[x-graphic-card-drivers]]
+== Драйверы видеокарт
+
+_**аннотация**: Определите свой графический процессор, порт, предоставляющий для него драйвер, установите его, затем включите его запуск при последующей загрузке с помощью man:sysrc[8]._
+
+Прежде чем FreeBSD сможет отображать графическую среду, ей необходим модуль ядра для управления графическим процессором. Графические драйверы являются быстро развивающимся кроссплатформенным программным обеспечением, поэтому они разрабатываются и распространяются отдельно от базовой системы FreeBSD.
+
+Следующая таблица показывает различные графические процессоры, поддерживаемые FreeBSD, их соответствующие модули, и порт предоставляет их поддержку:
+
+.Поддерживаемые графические устройства
+[options="header", cols="1,1,1,1"]
+|===
+| Тип | Лицензия | Модуль | Порт
+
+| Intel(R)
+| Открытое программное обеспечение
+| `i915kms`
+| package:graphics/drm-kmod[]
+
+| AMD(R)
+| Открытое программное обеспечение
+| `amdgpu` или `radeonkms`
+| package:graphics/drm-kmod[]
+
+| NVIDIA(R)
+| Проприетарный
+| `nvidia-drm`, `nvidia-modeset` или `nvidia`
+| package:graphics/nvidia-drm-kmod[] или +
+package:x11/nvidia-driver[]
+
+| Буфер кадров системной консоли
+| Открытое программное обеспечение
+| `scfb`
+| package:x11-drivers/xf86-video-scfb[]
+
+| Расширение VESA BIOS
+| Открытое программное обеспечение
+| `vesa`
+| package:x11-drivers/xf86-video-vesa[]
+
+| VirtualBox(R)
+| Открытое программное обеспечение
+| `vboxvideo`
+| package:emulators/virtualbox-ose-additions[]
+
+| VMware(R)
+| Открытое программное обеспечение
+| `vmwgfx`
+| package:x11-drivers/xf86-video-vmware[]
+|===
+
+Поддерживается несколько поколений технологий драйверов.
+
+* Драйверы прямой визуализации (Direct Rendering), позволяющие использовать PRIME offloading. PRIME позволяет сосуществовать нескольким поставщикам графической обработки. PRIME подробно описан в <<x-config-gpu>>.
+
+* Kernel Modesetting (crossref:glossary[kms-glossary,KMS]) Это позволяет драйверу напрямую задавать режим отображения. Это необходимо для поддержки приостановки и возобновления работы при использовании драйвера консоли man:vt[4].
+
+* User Modesetting Самая старая категория драйверов по-прежнему поддерживается, однако они могут использоваться только с консолью man:sc[4] и более старыми версиями графической среды man:Xorg[1].
+
+Следующая команда позволяет определить, какой графический процессор установлен в системе:
+
+[source, shell]
+....
+% pciconf -lv | grep -B3 display
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+vgapci1@pci0:0:2:0:     class=0x030000 rev=0x0c hdr=0x00 vendor=0x8086 device=0x46a6 subvendor=0x1028 subdevice=0x0b29
+    vendor     = 'Intel Corporation'
+    device     = 'Alder Lake-P GT2 [Iris Xe Graphics]'
+    class      = display
+....
+
+Подробные инструкции по установке и включению этих драйверов приведены в следующих подразделах.
+
+[WARNING]
+====
+Если графический процессор не поддерживается драйверами Intel(R), AMD(R) или NVIDIA(R), следует использовать модули SCFB или VESA. Модуль SCFB должен использоваться при загрузке в режиме UEFI, а модуль VESA — при загрузке в режиме BIOS.
+
+Эту команду можно использовать для проверки режима загрузки:
+
+[source, shell]
+....
+% sysctl machdep.bootmethod
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+machdep.bootmethod: UEFI
+....
+====
+
+[[x-configuration-intel]]
+=== Intel(R) Graphics
+
+Пакет package:graphics/drm-kmod[] косвенно предоставляет набор модулей ядра для использования с Intel(R) Graphics. В последних версиях эти модули могут работать совместно с другими графическими процессорами в режиме PRIME без дополнительной настройки.
+
+Драйвер Intel(R) Graphics можно установить, выполнив следующую команду:
+
+[source, shell]
+....
+# pkg install drm-kmod
+....
+
+Затем добавьте модуль в файл [.filename]#/etc/rc.conf#, выполнив следующую команду:
+
+[source, shell]
+....
+# sysrc kld_list+=i915kms
+....
+
+[[x-configuration-amd]]
+=== AMD(R) Graphics
+
+Пакет package:graphics/drm-kmod[] косвенно предоставляет модули ядра для набора графических процессоров AMD(R). В зависимости от поколения оборудования могут использоваться модули `amdgpu` или `radeonkms`. Проект FreeBSD поддерживает link:https://wiki.freebsd.org/Graphics/AMD-GPU-Matrix[матрицу поддержки AMD graphics], чтобы показать уровень поддержки и для определения необходимого драйвера.
+
+Драйверы AMD(R) Graphics можно установить, выполнив следующую команду:
+
+[source, shell]
+....
+# pkg install drm-kmod
+....
+
+Активируйте текущий модуль, добавив его в файл [.filename]#/etc/rc.conf#, для чего необходимо выполнить следующую команду:
+
+[source, shell]
+....
+# sysrc kld_list+=amdgpu
+....
+
+Для старых видеокарт (до HD7000/Tahiti) активируйте старый модуль, добавив модуль в файл [.filename]#/etc/rc.conf#, выполнив следующую команду:
+
+[source, shell]
+....
+# sysrc kld_list+=radeonkms
+....
+
+[[x-configuration-nvidia]]
+=== NVIDIA(R) Graphics
+
+NVIDIA(R) выпускает автономные или дискретные графические процессоры и предоставляет проприетарный драйвер для FreeBSD. Коллекция портов FreeBSD предоставляет более десятилетия драйверов для поддержки поколений графики NVIDIA.
+
+Администраторам следует устанавливать последнюю версию драйвера, поддерживаемую их оборудованием.
+
+Следующая таблица показывает порт, содержащий драйвер, рекомендуемый для загрузки модуль ядра, и ссылку на список оборудования, поддерживаемого этим драйвером:
+
+.Поддерживаемые версии драйверов NVIDIA(R) Graphics
+[options="header", cols="1,1,1"]
+|===
+| Порт | Модуль | Поддерживаемое оборудование
+
+| package:graphics/nvidia-drm-kmod[]
+| `nvidia` или +
+`nvidia-modeset`
+| link:https://www.nvidia.com/Download/driverResults.aspx/210651/en-us/[поддерживаемое оборудование]
+
+| package:x11/nvidia-driver-470[]
+| `nvidia-modeset`
+| link:https://www.nvidia.com/Download/driverResults.aspx/194639/en-us/[поддерживаемое оборудование]
+
+| package:x11/nvidia-driver-390[] или +
+package:x11/nvidia-secondary-driver-390[]
+| `nvidia-modeset`
+| link:https://www.nvidia.com/Download/driverResults.aspx/191122/en-us/[поддерживаемое оборудование]
+
+| package:x11/nvidia-driver-340[]
+| `nvidia`
+| link:https://www.nvidia.com/Download/driverResults.aspx/156167/en-us/[поддерживаемое оборудование]
+
+| package:x11/nvidia-driver-304[]
+| `nvidia`
+| link:https://www.nvidia.com/Download/driverResults.aspx/123712/en-us/[поддерживаемое оборудование]
+
+|===
+
+Последнюю версию драйвера NVIDIA(R) Graphics можно установить, выполнив следующую команду:
+
+[source, shell]
+....
+# pkg install nvidia-drm-kmod
+....
+
+Чтобы активировать драйвер, добавьте модуль в файл [.filename]#/etc/rc.conf#, выполнив следующую команду:
+
+[source, shell]
+....
+# sysrc kld_list+=nvidia-drm
+....
+
+Это драйвер прямой визуализации crossref:glossary[glossary-kms,KMS].
+
+Kernel modesetting — это опция для установки графического режима в ядре. Включите её для последующих загрузок с помощью следующей настройки man:loader.conf[5]:
+
+[source, shell]
+....
+hw.nvidiadrm.modeset="1"
+....
+
+Как PRIME, так и crossref:wayland[wayland-synopsis,Wayland] требуют режим kernel modesetting.
+
+Предыдущие версии драйвера не поддерживают прямую визуализацию (Direct Rendering). Вместо этого используйте модуль modesetting, выполнив следующую команду:
+[source, shell]
+....
+# sysrc kld_list+=nvidia-modeset
+....
+
+Если требуются драйверы Nvidia версии ниже 390, учтите, что они не поддерживают режим kernel modesetting, и поэтому должны использоваться с устаревшим драйвером консоли man:sc[4] и версией package:x11/xorg-server[] ниже 1.20.
+
+Затем добавьте модуль в файл [.filename]#/etc/rc.conf#, выполнив следующую команду:
+
+[source, shell]
+....
+# sysrc kld_list+=nvidia
+....
+
+[[x-overview]]
+== Обзор системы X Window
+
+Система X Window представляет собой наследуемый графический стек для платформ UNIX(R), поддерживающий новейшие технологии при сохранении совместимости с приложениями, созданными за многие поколения. Приложения, включая компоненты рабочего стола, обслуживаются сервером man:Xorg[1]. Данная система обладает сетевыми возможностями, и её различные компоненты могут взаимодействовать через сети.
+
+[[x-install]]
+== Установка сервера X.org
+
+_**аннотация**: Для размещения crossref:desktop[desktop-synopsis,рабочего стола] должен быть установлен сервер package:x11/xorg[X.org]. Пользователи должны быть добавлены в группу `video` для его использования._
+
+После установки и включения графического драйвера сервер X.org может быть установлен как метапакет или скомпилирован локально с помощью дерева портов.
+
+Полный метапакет можно быстро установить, но с меньшими возможностями для настройки:
+
+[source, shell]
+....
+# pkg install xorg
+....
+
+При такой установке будет установлена полная система X Window System, включая традиционный оконный менеджер man:twm[1] и сопутствующий традиционный набор приложений для рабочего стола. Большинству пользователей захочется установить и настроить современный crossref:desktop[desktop-synopsis,рабочий стол] по своему выбору.
+
+Текущий пользователь должен быть членом группы `video`, чтобы запускать графическую среду. Чтобы добавить пользователя в группу `video`, выполните следующую команду:
+
+[source, shell]
+....
+# pw groupmod video -m username
+....
+
+Для запуска системы X Window System используйте man:startx[1] из пакета package:x11/xinit[], либо установите и настройте дисплейный менеджер для запуска графического входа при загрузке.
+
+[TIP]
+====
+Меньшая версия системы X Windows, подходящая для опытных пользователей, доступна в пакете package:x11/xorg-minimal[]. Большинство документов, библиотек и приложений установлено не будет. Некоторым приложениям требуются эти дополнительные компоненты для работы.
+====
+
+[[x-config]]
+== Конфигурация X.org
+
+_**аннотация**: Если настройки по умолчанию для вашего монитора или устройств ввода вас не устраивают, в crossref:desktop[desktop-synopsis,рабочем окружении] включены графические интерфейсы для их настройки, либо их можно настроить вручную._
+
+Сервер X.org поддерживает большинство распространённых графических процессоров, мониторов и устройств ввода. Сначала попробуйте настройки по умолчанию. В этом подразделе представлен обзор их конфигурации.
+
+[[x-config-files]]
+=== Файлы конфигурации X.org
+
+Исторически сервер X.org настраивался с помощью файлов в [.filename]#/usr/local/etc/X11/#. Это до сих пор поддерживается для особых случаев, но конфликтует с динамической автоконфигурацией.
+
+Не создавайте конфигурацию сервер X.org в файле [.filename]#xorg.conf# и не запускайте `Xorg -configure`, если автоматическая настройка не дала сбоев.
+
+Сервер X.org ищет конфигурационные файлы в нескольких каталогах. [.filename]#/usr/local/etc/X11/# — это *рекомендуемый* каталог для таких файлов в FreeBSD. Использование этого каталога помогает отделять файлы приложений от файлов операционной системы.
+
+Проще использовать несколько файлов, каждый из которых настраивает определённый параметр, чем традиционный единый файл [.filename]#xorg.conf#. Эти файлы хранятся в подкаталоге [.filename]#/usr/local/etc/X11/xorg.conf.d/#.
+
+[[x-config-gpu]]
+=== Графические конфигурация
+
+Прямая визуализация предоставляет возможность бесшовного использования дискретного графического процессора (dGPU) совместно с интегрированным графическим процессором (iGPU), что называется PRIME. Драйверы автоматически перекладывают ресурсоемкие задачи на dGPU, когда это требуется, и отключают его питание, когда это возможно.
+
+Чтобы запускать приложения на более мощном GPU в PRIME, используйте переменную окружения `DRI_PRIME=1`.
+
+Если несколько графических драйверов конфликтуют, драйвер графического процессора можно указать в каталоге [.filename]#/usr/local/etc/X11/xorg.conf.d/#.
+
+Для настройки драйвера Intel(R) в файле конфигурации:
+
+[[x-config-video-cards-file-intel]]
+.Выберите драйвер видео Intel(R) Graphics в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-intel.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "intel"
+EndSection
+....
+====
+
+Для настройки драйвера AMD(R) в файле конфигурации:
+
+[[x-config-video-cards-file-amd]]
+.Выберите видеодрайвер AMD(R) Graphics в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-radeon.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "radeon"
+EndSection
+....
+====
+
+Для настройки драйвера NVIDIA(R) в файле конфигурации:
+
+[[x-config-video-cards-file-nvidia]]
+.Выберите видеодрайвер NVIDIA(R) Graphics в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-nvidia.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "nvidia-modeset"
+EndSection
+....
+====
+
+[TIP]
+====
+Пакет <<package,x11/nvidia-xconfig>> также может быть использован для базового управления параметрами конфигурации, доступными в драйвере NVIDIA.
+====
+
+Для настройки драйвера SCFB в файле конфигурации:
+
+[[x-config-video-cards-file-sfcb]]
+.Выберите видеодрайвер SCFB Graphics в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-scfb.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "scfb"
+EndSection
+....
+====
+
+Для настройки драйвера VESA в файле конфигурации:
+
+[[x-config-video-cards-file-vesa]]
+.Выберите видеодрайвер VESA Graphics в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-vesa.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "vesa"
+EndSection
+....
+====
+
+Для настройки нескольких графических процессоров можно добавить параметр `BusID`. Список ``ID`` шин графических процессоров можно вывести, выполнив:
+
+[source, shell]
+....
+% pciconf -lv | grep -B3 display
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+vgapci0@pci0:0:2:0:     class=0x030000 rev=0x0c hdr=0x00 vendor=0x8086 device=0x46a6 subvendor=0x1028 subdevice=0x0b29
+    vendor     = 'Intel Corporation'
+    device     = 'Alder Lake-P GT2 [Iris Xe Graphics]'
+    class      = display
+--
+vgapci0@pci0:1:0:0:     class=0x030200 rev=0xa1 hdr=0x00 vendor=0x10de device=0x25b9 subvendor=0x1028 subdevice=0x0b29
+    vendor     = 'NVIDIA Corporation'
+    device     = 'GA107GLM [RTX A1000 Laptop GPU]'
+    class      = display
+....
+
+[[x-config-video-cards-file-multiple]]
+.Выберите драйвер видео Intel(R) Graphics и драйвер видео NVIDIA(R) Graphics в файле
+[example]
+====
+
+[.filename]#/usr/local/etc/X11/xorg.conf.d/20-drivers.conf#
+
+[.programlisting]
+....
+Section "Device"
+	Identifier "Card0"
+	Driver     "intel"
+	BusID     "pci0:0:2:0"
+EndSection
+
+Section "Device"
+	Identifier "Card1"
+	Driver     "nvidia-modeset"
+	BusID     "pci0:0:2:1"
+EndSection
+....
+====
+
+[[x-config-monitors]]
+=== Конфигурация монитора
+
+Почти все мониторы поддерживают стандарт Extended Display Identification Data (`EDID`). X.org использует `EDID` для взаимодействия с монитором и определения поддерживаемых разрешений и частот обновления. Затем он выбирает наиболее подходящую комбинацию настроек для работы с этим монитором.
+
+Другие разрешения, поддерживаемые монитором, можно выбрать атомарно после запуска X-сервера с помощью man:xrandr[1] или в конфигурационных файлах сервера X.org.
+
+[[x-config-monitors-xrandr]]
+==== Использование RandR (Изменение размера и поворот)
+
+Выполните `man:xrandr[1]` в сессии X без параметров, чтобы увидеть список видеовыходов и обнаруженных режимов монитора:
+
+[source, shell]
+....
+% xrandr
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+Screen 0: minimum 320 x 200, current 2560 x 960, maximum 8192 x 8192
+LVDS-1 connected 1280x800+0+0 (normal left inverted right x axis y axis) 261mm x 163mm
+   1280x800      59.99*+  59.81    59.91    50.00  
+   1280x720      59.86    59.74  
+   1024x768      60.00  
+   1024x576      59.90    59.82  
+   960x540       59.63    59.82  
+   800x600       60.32    56.25  
+   864x486       59.92    59.57  
+   640x480       59.94  
+   720x405       59.51    58.99  
+   640x360       59.84    59.32  
+VGA-1 connected primary 1280x960+1280+0 (normal left inverted right x axis y axis) 410mm x 257mm
+   1280x1024     75.02    60.02  
+   1440x900      74.98    60.07  
+   1280x960      60.00* 
+   1280x800      74.93    59.81  
+   1152x864      75.00  
+   1024x768      75.03    70.07    60.00  
+   832x624       74.55  
+   800x600       72.19    75.00    60.32    56.25  
+   640x480       75.00    72.81    66.67    59.94  
+   720x400       70.08  
+HDMI-1 disconnected (normal left inverted right x axis y axis)
+DP-1 disconnected (normal left inverted right x axis y axis)
+HDMI-2 disconnected (normal left inverted right x axis y axis)
+DP-2 disconnected (normal left inverted right x axis y axis)
+DP-3 disconnected (normal left inverted right x axis y axis)
+....
+
+Это показывает, что выход `VGA-1` используется для отображения экрана с разрешением 1280x960 пикселей и частотой обновления около 60 Гц. Выход `LVDS-1` используется как дополнительный монитор с разрешением 1280x800 пикселей и частотой обновления около 60 Гц. Мониторы не подключены к разъёмам `HDMI-1`, `HDMI-2`, `DP-1`, `DP-2` и `DP-3`.
+
+Любой из других режимов отображения можно выбрать с помощью man:xrandr[1]. Например, для переключения на 1280x1024 при 60 Гц:
+
+[source, shell]
+....
+% xrandr --output LVDS-1 --mode 1280x720 --rate 60
+....
+
+[TIP]
+====
+Часто черный экран при запуске X можно исправить, добавив шаг `xrandr --auto` в процесс инициализации.
+====
+
+[[x-config-monitors-file]]
+==== Использование файлов конфигурации X.org
+
+Конфигурацию монитора также можно задать в файле конфигурации.
+
+Установить разрешение экрана 1024x768 в конфигурационном файле:
+
+.Установка разрешения экрана в файле
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/10-monitor.conf#
+
+[.programlisting]
+....
+Section "Screen"
+	Identifier "Screen0"
+	Device     "Card0"
+	SubSection "Display"
+	Modes      "1024x768"
+	EndSubSection
+EndSection
+....
+====
+
+[[x-config-input]]
+=== Конфигурация устройств ввода
+
+Сервер Xorg[X.org] предоставляет библиотеку package:x11/libinput[], которая представляет собой кроссплатформенное решение для поддержки всех сенсорных, указывающих и клавиатурных устройств в рамках единой библиотеки. Если не указано иное, она загружается автоматически.
+
+Индивидуальные настройки устройств для man:libinput[4] можно настроить в графическом интерфейсе вашего crossref:desktop[desktop-synopsis,рабочего стола] или вручную с помощью package:x11/xinput[xinput] и package:x11/setxkbmap[setxkbmap].
+
+В качестве альтернативы, в пакете package:x11-drivers[] категории x11/xf86-input-[foo] доступны более старые, легковесные отдельные драйверы для конкретных устройств ввода. Этот подход требует ручной настройки сервера X.org. Оба метода описаны в данном подразделе.
+
+[[x-config-input-atmoic]]
+==== Использование файла конфигурации атомарного ввода
+
+Устройства, поддерживаемые man:libinput[4], могут быть настроены с помощью графических утилит, включенных в ваш crossref:desktop[desktop-synopsis,рабочую среду], или вручную и атомарно во время выполнения с помощью package:x11/xinput[] и package:x11/setxkbmap[].
+
+Чтобы узнать, к каким устройствам в данный момент подключён man:libinput[4], запустите man:xinput[1] без аргументов:
+
+[source, shell]
+....
+$ xinput
+....
+
+Ее вывод должен быть похож на следующий:
+
+[example]
+....
+
+⎡ Virtual core pointer                    	id=2	[master pointer  (3)]
+⎜   ↳ Virtual core XTEST pointer              	id=4	[slave  pointer  (2)]
+⎜   ↳ System mouse                            	id=7	[slave  pointer  (2)]
+⎜   ↳ VEN_0488:00 0488:1031 Mouse             	id=11	[slave  pointer  (2)]
+⎜   ↳ VEN_0488:00 0488:1031 TouchPad          	id=12	[slave  pointer  (2)]
+⎣ Virtual core keyboard                   	id=3	[master keyboard (2)]
+    ↳ Virtual core XTEST keyboard             	id=5	[slave  keyboard (3)]
+    ↳ System keyboard multiplexer             	id=6	[slave  keyboard (3)]
+    ↳ Power Button                            	id=8	[slave  keyboard (3)]
+    ↳ Sleep Button                            	id=9	[slave  keyboard (3)]
+    ↳ AT keyboard                             	id=10	[slave  keyboard (3)]
+....
+
+Все поддерживаемые этими устройствами настройки предоставляются в виде свойств, которые можно выводить и устанавливать атомарно. Указывающие устройства имеют множество настраиваемых свойств, клавиатурам обычно не требуется ничего.
+
+Для настройки клавиатуры обратитесь к man:setxkbmap[1].
+
+Удовлетворившись своей конфигурацией, просто добавьте строки в ваш скрипт инициализации X, например, в [.filename]#~/.Xsession# или [.filename]#~/.xinitrc#.
+
+[[x-config-input-file]]
+==== Использование файлов конфигурации X.org
+
+
+[TIP]
+====
+Некоторые среды рабочего стола (например, crossref:desktop[kde-environment,KDE Plasma]) предоставляют графический интерфейс для настройки этих параметров. Проверьте, доступен ли такой вариант, прежде чем приступать к ручному редактированию конфигурации.
+====
+
+[[x-config-input-keyboard-layout]]
+Например, чтобы в ручную настроить у сервера X.org раскладку клавиатуры:
+
+.Установка раскладки клавиатуры
+[example]
+====
+[.filename]#/usr/local/etc/X11/xorg.conf.d/00-keyboard.conf#
+
+[.programlisting]
+....
+Section "InputClass"
+        Identifier "Keyboard1"
+        MatchIsKeyboard "on"
+        Option "XkbLayout" "es, fr"
+        Option "XkbModel" "pc104"
+        Option "XkbVariant" ",qwerty"
+        Option "XkbOptions" "grp:win_space_toggle"
+EndSection
+....
+====
+
+[[x-fonts]]
+== Использование шрифтов в системе X Window
+
+_**аннотация**: Дополнительные шрифты можно установить из категории package:x11-fonts[] или разместить в [.filename]#~/.fonts#. Они становятся доступны немедленно для современных приложений. Также доступна и описана конфигурация для старых приложений._
+
+Система X Window предоставляет библиотеку интерфейса X FreeType (man:Xft[3]) для отображения векторных или контурных шрифтов, а также традиционную систему X Logical Font Description, сохраняющую совместимость с поколениями приложений и шрифтов.
+
+Пользователей в основном интересуют два типа шрифтов:
+
+* Шрифты OpenType или TrueType(R) предназначены для отображения на экране.
+* Шрифты Adobe(R) PostScript(R) Type 1 предназначены для печати на бумаге.
+
+Это векторные или контурные шрифты, также существуют растровые шрифты.
+
+Коллекция портов FreeBSD включает в себя широкий и постоянно растущий каталог бесплатных высококачественных шрифтов, доступных для установки в категории package:x11-fonts[].
+
+Системные пакеты шрифтов, установленные из коллекции портов, находятся в `[.filename]#/usr/local/share/fonts/#`. Шрифты для отдельного пользователя можно разместить в `[.filename]#~/.fonts/#` или `[.filename]#~/.local/share/fonts/#`.
+
+Шрифты в каталоге или подкаталогах станут доступны для немедленного использования после перестроения кэша информации о шрифтах. Для принудительного запуска этого процесса выполните:
+
+[source, shell]
+....
+% fc-cache
+....
+
+В дереве портов доступно множество бесплатных высококачественных шрифтов обоих типов, которые можно легко использовать с X Window System. В этой главе представлен краткий обзор обоих типов, а также настройка интерфейса X FreeType.
+
+Для получения дополнительной информации о том, как установить и настроить шрифты в FreeBSD, прочитайте статью link:{fonts}[Шрифты и FreeBSD].
+
+[[truetype]]
+=== Шрифты TrueType(R)
+
+В X.org есть встроенная поддержка отображения шрифтов TrueType(R). Для этого доступны два различных модуля. В данном примере используется модуль freetype, так как он более согласован с другими механизмами отображения шрифтов. Чтобы включить модуль freetype, добавьте следующую строку в раздел `"Module"` файла [.filename]#/usr/local/etc/X11/xorg.conf.d/90-fonts.conf#.
+
+[.programlisting]
+....
+Load  "freetype"
+....
+
+Теперь создайте каталог для шрифтов TrueType(R) (например, [.filename]#/usr/local/share/fonts/TrueType#) и скопируйте все шрифты TrueType(R) в этот каталог. Учтите, что шрифты TrueType(R) нельзя напрямую брать из Apple(R) Mac(R); они должны быть в формате UNIX(R)/MS-DOS(R)/Windows(R) для использования в X.org. После копирования файлов в этот каталог используйте `mkfontscale` для создания [.filename]#fonts.dir#, чтобы X-сервер знал, что новые файлы установлены. `mkfontscale` можно установить как пакет:
+
+[source, shell]
+....
+# pkg install mkfontscale
+....
+
+Затем создайте индекс файлов шрифтов X в каталоге:
+
+[source, shell]
+....
+# cd /usr/local/share/fonts/TrueType
+# mkfontscale
+....
+
+Теперь добавьте каталог TrueType(R) в путь шрифтов. Это делается так же, как описано в <<type1>>:
+
+[source, shell]
+....
+% xset fp+ /usr/local/share/fonts/TrueType
+% xset fp rehash
+....
+
+или добавьте строку `FontPath` в файл [.filename]#xorg.conf#.
+
+Теперь Gimp, LibreOffice и все другие X-приложения должны распознавать установленные шрифты TrueType®. Очень мелкие шрифты (например, текст на веб-странице с высоким разрешением) и очень крупные шрифты (в LibreOffice) теперь будут выглядеть значительно лучше.
+
+[[type1]]
+=== Шрифты Type1
+
+Коллекция шрифтов URW (package:x11-fonts/urwfonts[]) включает высококачественные версии стандартных шрифтов type1 (Times Roman(TM), Helvetica(TM), Palatino(TM) и другие). Коллекция Freefonts (package:x11-fonts/freefonts[]) содержит гораздо больше шрифтов, но большинство из них предназначены для использования в графических программах, таких как Gimp, и не являются достаточно полными для использования в качестве экранных шрифтов.
+
+Для установки указанных коллекций шрифтов Type1 из бинарных пакетов выполните следующие команды:
+
+[source, shell]
+....
+# pkg install urwfonts
+....
+
+Аналогично с коллекцией freefont или другими. Чтобы X-сервер, сконфигурированный в ручную) обнаружил эти шрифты, добавьте соответствующую строку в файл конфигурации X-сервера ([.filename]#/usr/local/etc/X11/xorg.conf.d/90-fonts.conf#), которая выглядит следующим образом:
+
+[.programlisting]
+....
+Section "Files"
+  FontPath "/usr/local/share/fonts/urwfonts/"
+EndSection
+....
+
+Альтернативно, в командной строке в сеансе X выполните:
+
+[source, shell]
+....
+% xset fp+ /usr/local/share/fonts/urwfonts
+% xset fp rehash
+....
+
+Это будет работать, но изменения пропадут после завершения сеанса X, если не добавить их в файл автозагрузки ([.filename]#~/.xinitrc# для обычного сеанса `startx` или [.filename]#~/.xsession# при входе через графический менеджер входа, например XDM). Третий способ — использовать новый файл [.filename]#/usr/local/etc/fonts/local.conf#, как показано в <<antialias>>.
+
+[[antialias]]
+=== Анти-алиасинг шрифтов
+
+Все шрифты в X.org, находящиеся в [.filename]#/usr/local/share/fonts/# и [.filename]#~/.fonts/#, автоматически становятся доступными для сглаживания приложениям, поддерживающим Xft. Большинство современных приложений поддерживают Xft, включая KDE, GNOME и Firefox.
+
+Для управления тем, какие шрифты сглаживаются, или для настройки свойств сглаживания создайте (или отредактируйте, если он уже существует) файл [.filename]#/usr/local/etc/fonts/local.conf#. С помощью этого файла можно настроить несколько расширенных возможностей системы шрифтов Xft; в этом разделе описаны лишь некоторые простые варианты. Подробнее см. в man:fonts-conf[5].
+
+Этот файл должен быть в формате XML. Внимательно следите за регистром символов и убедитесь, что все теги правильно закрыты. Файл начинается со стандартного заголовка XML, за которым следует определение DOCTYPE, а затем тег `<fontconfig>`:
+
+[.programlisting]
+....
+<?xml version="1.0"?>
+      <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+      <fontconfig>
+....
+
+Как уже упоминалось, все шрифты в [.filename]#/usr/local/share/fonts/#, а также в [.filename]#~/.fonts/# уже доступны для приложений, поддерживающих Xft. Чтобы добавить другой каталог вне этих двух деревьев каталогов, добавьте строку следующего вида в [.filename]#/usr/local/etc/fonts/local.conf#:
+
+[.programlisting]
+....
+<dir>/path/to/my/fonts</dir>
+....
+
+После добавления новых шрифтов, особенно новых каталогов со шрифтами, перестройте кэши шрифтов:
+
+[source, shell]
+....
+# fc-cache -f
+....
+
+Антиалиасинг делает границы слегка размытыми, что улучшает читаемость очень мелкого текста и убирает "лесенки" у крупного текста, но может вызывать усталость глаз, если применяется к обычному тексту. Чтобы исключить из антиалиасинга шрифты размером меньше 14 пунктов, добавьте следующие строки:
+
+[.programlisting]
+....
+	<match target="font">
+	    <test name="size" compare="less">
+		<double>14</double>
+	    </test>
+	    <edit name="antialias" mode="assign">
+		<bool>false</bool>
+	    </edit>
+	</match>
+	<match target="font">
+	    <test name="pixelsize" compare="less" qual="any">
+		<double>14</double>
+	    </test>
+	    <edit mode="assign" name="antialias">
+		<bool>false</bool>
+	    </edit>
+	</match>
+....
+
+Интервал для некоторых моноширинных шрифтов также может быть некорректным при сглаживании. Это особенно актуально для KDE. Одно из возможных решений — принудительно установить интервал для таких шрифтов в значение 100. Добавьте следующие строки:
+
+[.programlisting]
+....
+	<match target="pattern" name="family">
+	   <test qual="any" name="family">
+	       <string>fixed</string>
+	   </test>
+	   <edit name="family" mode="assign">
+	       <string>mono</string>
+	   </edit>
+	</match>
+	<match target="pattern" name="family">
+	    <test qual="any" name="family">
+		<string>console</string>
+	    </test>
+	    <edit name="family" mode="assign">
+		<string>mono</string>
+	    </edit>
+	</match>
+....
+
+(это создает псевдонимы для других распространенных названий моноширинных шрифтов как `"mono"`), а затем добавляем:
+
+[.programlisting]
+....
+	<match target="pattern" name="family">
+	     <test qual="any" name="family">
+		 <string>mono</string>
+	     </test>
+	     <edit name="spacing" mode="assign">
+		 <int>100</int>
+	     </edit>
+	 </match>
+....
+
+Некоторые шрифты, такие как Helvetica, могут иметь проблемы при сглаживании. Обычно это проявляется в виде шрифта, который кажется разрезанным пополам по вертикали. В худшем случае это может привести к сбою приложений. Чтобы избежать этого, рекомендуется добавить следующее в [.filename]#local.conf#:
+
+[.programlisting]
+....
+	<match target="pattern" name="family">
+	     <test qual="any" name="family">
+		 <string>Helvetica</string>
+	     </test>
+	     <edit name="family" mode="assign">
+		 <string>sans-serif</string>
+	     </edit>
+	 </match>
+....
+
+После редактирования [.filename]#local.conf# убедитесь, что файл завершается тегом `</fontconfig>`. Если этого не сделать, изменения будут проигнорированы.
+
+Пользователи могут добавить индивидуальные настройки, создав собственный файл [.filename]#~/.config/fontconfig/fonts.conf#. Этот файл использует тот же формат `XML`, который описан выше.
+
+Последний момент: при использовании ЖК-экрана может потребоваться субпиксельная выборка. По сути, это раздельная обработка красного, зелёного и синего компонентов (разделённых горизонтально) для улучшения горизонтального разрешения; результат может быть впечатляющим. Чтобы включить эту функцию, добавьте следующую строку в файл [.filename]#local.conf#:
+
+[.programlisting]
+....
+	 <match target="font">
+	     <test qual="all" name="rgba">
+		 <const>unknown</const>
+	     </test>
+	     <edit name="rgba" mode="assign">
+		 <const>rgb</const>
+	     </edit>
+	 </match>
+....
+
+[NOTE]
+====
+В зависимости от типа дисплея, возможно, потребуется изменить `rgb` на `bgr`, `vrgb` или `vbgr`: поэкспериментируйте и выберите наиболее подходящий вариант.
+====

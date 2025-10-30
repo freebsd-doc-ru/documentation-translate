@@ -1,0 +1,484 @@
+---
+description: 'FreeBSD обеспечивает двоичную совместимость с Linux, позволяя пользователям устанавливать и запускать большинство двоичных исполняемых файлов Linux в системе FreeBSD без необходимости предварительного изменения двоичного файла'
+next: books/handbook/wine
+params:
+  path: /books/handbook/linuxemu/
+part: 'Часть II. Стандартные задачи'
+prev: books/handbook/printing
+showBookMenu: true
+tags: ["linux", "linuxulator", "emulation", "binary", "compatibility"]
+title: 'Глава 12. Двоичная совместимость с Linux'
+weight: 15
+---
+
+[[linuxemu]]
+= Двоичная совместимость с Linux
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: 12
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/handbook/linuxemu/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+[[linuxemu-synopsis]]
+== Обзор
+
+FreeBSD предоставляет *опциональную* двоичную совместимость с Linux(R), часто называемую Linuxulator, что позволяет пользователям устанавливать и запускать неизменённые Linux-бинарники. Это доступно для архитектур x86 (как 32, так и 64 бит) и AArch64. Некоторые специфичные для Linux функции операционной системы пока не поддерживаются; в основном это касается функциональности, связанной с оборудованием или управлением системой, такой как cgroups или пространства имён.
+
+Прежде чем читать эту главу, вы должны:
+
+* Знать, как установить crossref:ports[ports,дополнительное стороннее программное обеспечение].
+
+Прочитав эту главу, вы будете знать:
+
+* Как включить двоичную совместимость с Linux в системе FreeBSD.
+* Как установить дополнительные общие библиотеки Linux.
+* Как установить Linux-приложения в системе FreeBSD.
+* Как реализована совместимость с Linux в FreeBSD.
+
+[[linuxemu-lbc-install]]
+== Настройка бинарной совместимости с Linux
+
+По умолчанию бинарная совместимость с man:linux[4] не включена.
+
+Чтобы включить ABI Linux при загрузке, выполните следующую команду:
+
+[.programlisting]
+....
+# sysrc linux_enable="YES"
+....
+
+После включения его можно запустить без перезагрузки, выполнив следующую команду:
+
+[source, shell]
+....
+# service linux start
+....
+
+Этого достаточно для работы статически связанных Linux-библиотек.
+
+Сервис Linux загрузит необходимые модули ядра и смонтирует файловые системы, ожидаемые Linux-приложениями, в [.filename]#/compat/linux#. Их можно запускать так же, как и родные FreeBSD-приложения; они ведут себя почти так же, как родные процессы, и их можно трассировать и отлаживать обычными способами.
+
+Текущее содержимое [.filename]#/compat/linux# можно проверить, выполнив следующую команду:
+
+[source, shell]
+....
+# ls -l /compat/linux/
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+total 1
+dr-xr-xr-x  13 root  wheel  512 Apr 11 19:12 dev
+dr-xr-xr-x   1 root  wheel    0 Apr 11 21:03 proc
+dr-xr-xr-x   1 root  wheel    0 Apr 11 21:03 sys
+....
+
+[[linux-userlands]]
+== Пользовательские окружения Linux
+
+Программное обеспечение Linux требует не только ABI для работы. Для запуска программ Linux необходимо сначала установить пользовательское пространство Linux.
+
+[TIP]
+====
+Если требуется только запустить какое-либо программное обеспечение, уже включённое в дерево портов, его можно установить через менеджер пакетов, и man:pkg[8] автоматически настроит необходимую пользовательскую среду Linux.
+
+Например, чтобы установить Sublime Text 4 вместе со всеми необходимыми библиотеками Linux, выполните следующую команду:
+ 
+[source, shell]
+....
+# pkg install linux-sublime-text4
+....
+====
+
+[[linuxemu-rockylinux]]
+=== Базовая система Rocky Linux из пакетов FreeBSD
+
+Для установки пользовательской среды Rocky Linux 9 выполните следующую команду:
+
+[source, shell]
+....
+# pkg install linux_base-rl9
+....
+
+Пакет package:emulators/linux_base-rl9[] разместит базовую систему, основанную на Rocky Linux 9, в [.filename]#/compat/linux#.
+
+После установки пакета содержимое [.filename]#/compat/linux# можно проверить, выполнив следующую команду, чтобы убедиться, что пользовательская среда Rocky Linux установлена:
+
+[source, shell]
+....
+# ls -l /compat/linux/
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+total 36
+drwxr-xr-x   2 root wheel  512 Oct  9 17:28 afs
+lrwxr-xr-x   1 root wheel    7 May 16  2022 bin -> usr/bin
+drwxr-xr-x   3 root wheel  512 Oct  9 17:28 dev
+drwxr-xr-x  24 root wheel 1536 Oct  9 17:28 etc
+lrwxr-xr-x   1 root wheel    7 May 16  2022 lib -> usr/lib
+lrwxr-xr-x   1 root wheel    9 May 16  2022 lib64 -> usr/lib64
+drwxr-xr-x   2 root wheel  512 Oct  9 17:28 opt
+drwxr-xr-x   2 root wheel  512 Oct  9 17:28 proc
+lrwxr-xr-x   1 root wheel    8 Oct  1 03:11 run -> /var/run
+lrwxr-xr-x   1 root wheel    8 May 16  2022 sbin -> usr/sbin
+drwxr-xr-x   2 root wheel  512 Oct  9 17:28 srv
+drwxr-xr-x   2 root wheel  512 Oct  9 17:28 sys
+drwxr-xr-x   8 root wheel  512 Oct  9 17:28 usr
+drwxr-xr-x  16 root wheel  512 Oct  9 17:28 var
+....
+
+[[linuxemu-centos]]
+=== Базовая система CentOS из пакетов FreeBSD
+
+[WARNING]
+====
+Пакет package:emulators/linux_base-c7[] устарел после прекращения поддержки вышестоящего проекта. Это означает, что package:emulators/linux_base-c7[] больше не будет получать обновления безопасности. Рекомендуется использовать crossref:linuxemu[linuxemu-rockylinux, базовую систему Rocky Linux], если не требуется совместимость с 32-битными системами.
+====
+
+Для установки пользовательской среды CentOS выполните следующую команду:
+
+[source, shell]
+....
+# pkg install linux_base-c7
+....
+
+Пакет package:emulators/linux_base-c7[] разместит базовую систему, основанную на CentOS 7, в каталоге `[.filename]#/compat/linux#`.
+
+После установки пакета содержимое [.filename]#/compat/linux# можно проверить, выполнив следующую команду, чтобы убедиться, что пользовательская среда CentOS установлена:
+
+[source, shell]
+....
+# ls -l /compat/linux/
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+total 30
+lrwxr-xr-x   1 root  wheel    7 Apr 11  2018 bin -> usr/bin
+drwxr-xr-x  13 root  wheel  512 Apr 11 21:10 dev
+drwxr-xr-x  25 root  wheel   64 Apr 11 21:10 etc
+lrwxr-xr-x   1 root  wheel    7 Apr 11  2018 lib -> usr/lib
+lrwxr-xr-x   1 root  wheel    9 Apr 11  2018 lib64 -> usr/lib64
+drwxr-xr-x   2 root  wheel    2 Apr 11 21:10 opt
+dr-xr-xr-x   1 root  wheel    0 Apr 11 21:25 proc
+lrwxr-xr-x   1 root  wheel    8 Feb 18 02:10 run -> /var/run
+lrwxr-xr-x   1 root  wheel    8 Apr 11  2018 sbin -> usr/sbin
+drwxr-xr-x   2 root  wheel    2 Apr 11 21:10 srv
+dr-xr-xr-x   1 root  wheel    0 Apr 11 21:25 sys
+drwxr-xr-x   8 root  wheel    9 Apr 11 21:10 usr
+drwxr-xr-x  16 root  wheel   17 Apr 11 21:10 var
+....
+
+[[linuxemu-debootstrap]]
+=== Debian / Ubuntu Базовая система с debootstrap
+
+Альтернативный способ предоставления общих библиотек Linux — использование package:sysutils/debootstrap[]. Это имеет преимущество в виде предоставления полного дистрибутива Debian или Ubuntu.
+
+Чтобы установить debootstrap, выполните следующую команду:
+
+[source, shell]
+....
+# pkg install debootstrap
+....
+
+Для работы man:debootstrap[8] требуется включённый man:linux[4] ABI. После его активации выполните следующую команду для установки Ubuntu или Debian в [.filename]#/compat/ubuntu#:
+
+[source, shell]
+....
+# debootstrap focal /compat/ubuntu
+....
+
+[NOTE]
+====
+Хотя технически возможно установить в [.filename]#/compat/linux#, это не рекомендуется из-за возможных конфликтов с пакетами на основе CentOS. Вместо этого используйте имя каталога, производное от названия дистрибутива или версии, например, [.filename]#/compat/ubuntu#.
+====
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+I: Retrieving InRelease 
+I: Checking Release signature
+I: Valid Release signature (key id F6ECB3762474EDA9D21B7022871920D1991BC93C)
+I: Retrieving Packages 
+I: Validating Packages 
+I: Resolving dependencies of required packages...
+I: Resolving dependencies of base packages...
+I: Checking component main on http://archive.ubuntu.com/ubuntu...
+[...]
+I: Configuring console-setup...
+I: Configuring kbd...
+I: Configuring ubuntu-minimal...
+I: Configuring libc-bin...
+I: Configuring ca-certificates...
+I: Base system installed successfully.
+....
+
+Затем настройте точки монтирования в [.filename]#/etc/fstab#.
+
+[TIP]
+====
+Если содержимое домашнего каталога должно быть общим и необходимо иметь возможность запускать приложения X11, [.filename]#/home# и [.filename]#/tmp# следует подключить в области совместимости linux с использованием man:nullfs[5] для loopback (обратной петли).
+
+Следующий пример можно добавить в [.filename]#/etc/fstab#:
+
+[.programlisting]
+....
+# Device        Mountpoint              FStype          Options                      Dump    Pass#
+devfs           /compat/ubuntu/dev      devfs           rw,late                      0       0
+tmpfs           /compat/ubuntu/dev/shm  tmpfs           rw,late,size=1g,mode=1777    0       0
+fdescfs         /compat/ubuntu/dev/fd   fdescfs         rw,late,linrdlnk             0       0
+linprocfs       /compat/ubuntu/proc     linprocfs       rw,late                      0       0
+linsysfs        /compat/ubuntu/sys      linsysfs        rw,late                      0       0
+/tmp            /compat/ubuntu/tmp      nullfs          rw,late                      0       0
+/home           /compat/ubuntu/home     nullfs          rw,late                      0       0
+....
+
+Затем выполните man:mount[8]:
+
+[source, shell]
+....
+# mount -al
+....
+====
+
+Для доступа к системе с использованием man:chroot[8] выполните следующую команду:
+
+[source, shell]
+....
+# chroot /compat/ubuntu /bin/bash
+....
+
+Тогда можно выполнить man:uname[1], чтобы проверить окружение Linux:
+
+[source, shell]
+....
+# uname -s -r -m
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+Linux 3.17.0 x86_64
+....
+
+Оказавшись в chroot, система ведет себя как при обычной установке Ubuntu. Хотя systemd не работает, команда man:service[8] функционирует в обычном режиме.
+
+[TIP]
+====
+Чтобы добавить отсутствующие репозитории пакетов по умолчанию, отредактируйте файл [.filename]#/compat/ubuntu/etc/apt/sources.list#.
+
+Для amd64 можно использовать следующий пример:
+
+[.programlisting]
+....
+deb http://archive.ubuntu.com/ubuntu focal main universe restricted multiverse
+deb http://security.ubuntu.com/ubuntu/ focal-security universe multiverse restricted main
+deb http://archive.ubuntu.com/ubuntu focal-backports universe multiverse restricted main
+deb http://archive.ubuntu.com/ubuntu focal-updates universe multiverse restricted main
+....
+
+Для arm64 можно использовать следующий пример:
+
+[.programlisting]
+....
+deb http://ports.ubuntu.com/ubuntu-ports bionic main universe restricted multiverse
+....
+====
+
+[[linuxemu-advanced]]
+== Сложные темы
+
+Список всех параметров man:sysctl[8], связанных с Linux, можно найти в man:linux[4].
+
+Некоторые приложения требуют подключения определенных файловых систем.
+
+Обычно это обрабатывается скриптом [.filename]#/etc/rc.d/linux#, но можно отключить при загрузке, выполнив следующую команду:
+
+[.programlisting]
+....
+sysrc linux_mounts_enable="NO"
+....
+
+Файловые системы, смонтированные скриптом rc, не будут работать для Linux-процессов внутри chroot или клетки. При необходимости настройте их в [.filename]#/etc/fstab#:
+
+[.programlisting]
+....
+devfs      /compat/linux/dev      devfs      rw,late                    0  0
+tmpfs      /compat/linux/dev/shm  tmpfs      rw,late,size=1g,mode=1777  0  0
+fdescfs    /compat/linux/dev/fd   fdescfs    rw,late,linrdlnk           0  0
+linprocfs  /compat/linux/proc     linprocfs  rw,late                    0  0
+linsysfs   /compat/linux/sys      linsysfs   rw,late                    0  0
+....
+
+Поскольку уровень двоичной совместимости с Linux получил поддержку выполнения как 32-, так и 64-битных бинарных файлов Linux, стало невозможно статически линковать функциональность эмуляции в пользовательское ядро.
+
+[[linuxemu-libs-manually]]
+=== Установка дополнительных библиотек вручную
+
+[NOTE]
+====
+Для подкаталогов базовой системы, созданных с помощью man:debootstrap[8], используйте приведенные выше инструкции.
+====
+
+Если приложение Linux жалуется на отсутствие общих библиотек после настройки совместимости с двоичными файлами Linux, определите, какие общие библиотеки нужны двоичному файлу Linux, и установите их вручную.
+
+С системы Linux с той же архитектурой CPU можно использовать `ldd` для определения того, какие разделяемые библиотеки необходимы приложению.
+
+Например, чтобы проверить, какие разделяемые библиотеки требуются для `linuxdoom`, выполните следующую команду в системе Linux, где установлен Doom:
+
+[source, shell]
+....
+% ldd linuxdoom
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+libXt.so.3 (DLL Jump 3.1) => /usr/X11/lib/libXt.so.3.1.0
+libX11.so.3 (DLL Jump 3.1) => /usr/X11/lib/libX11.so.3.1.0
+libc.so.4 (DLL Jump 4.5pl26) => /lib/libc.so.4.6.29
+....
+
+Затем скопируйте все файлы из последнего столбца вывода с системы Linux в [.filename]#/compat/linux# на системе FreeBSD. После копирования создайте символические ссылки на имена из первого столбца.
+
+Этот пример приведёт к следующим файлам в системе FreeBSD:
+
+[.programlisting]
+....
+/compat/linux/usr/X11/lib/libXt.so.3.1.0
+/compat/linux/usr/X11/lib/libXt.so.3 -> libXt.so.3.1.0
+/compat/linux/usr/X11/lib/libX11.so.3.1.0
+/compat/linux/usr/X11/lib/libX11.so.3 -> libX11.so.3.1.0
+/compat/linux/lib/libc.so.4.6.29
+/compat/linux/lib/libc.so.4 -> libc.so.4.6.29
+....
+
+Если уже существует общая библиотека Linux с соответствующим номером старшей версии (первый столбец вывода `ldd`), её не нужно копировать в файл, указанный в последнем столбце, так как существующая библиотека должна работать. Однако рекомендуется скопировать общую библиотеку, если она является более новой версией. Старую версию можно удалить, при условии что символическая ссылка указывает на новую.
+
+Например, эти библиотеки уже существуют в системе FreeBSD:
+
+[.programlisting]
+....
+/compat/linux/lib/libc.so.4.6.27
+/compat/linux/lib/libc.so.4 -> libc.so.4.6.27
+....
+
+и `ldd` показывает, что для бинарного файла требуется более новая версия:
+
+[.programlisting]
+....
+libc.so.4 (DLL Jump 4.5pl26) -> libc.so.4.6.29
+....
+
+Поскольку существующая библиотека устарела всего на одну или две версии в последней цифре, программа должна по-прежнему работать с немного более старой версией. Однако можно безопасно заменить существующий [.filename]#libc.so# на более новую версию:
+
+[.programlisting]
+....
+/compat/linux/lib/libc.so.4.6.29
+/compat/linux/lib/libc.so.4 -> libc.so.4.6.29
+....
+
+Как правило, необходимость искать разделяемые библиотеки, от которых зависят Linux-бинарники, возникает только в первые несколько раз при установке Linux-программ на FreeBSD. Через некоторое время в системе накопится достаточный набор разделяемых библиотек Linux, что позволит запускать вновь устанавливаемые Linux-бинарники без дополнительных усилий.
+
+=== Маркировка ELF-бинарников Linux
+
+Ядро FreeBSD использует несколько методов для определения, является ли запускаемый двоичный файл Linux-программой: оно проверяет бренд в заголовке ELF-файла, ищет известные пути к ELF-интерпретаторам и проверяет ELF-заметки; наконец, по умолчанию небрендированные ELF-исполняемые файлы в любом случае считаются Linux-программами.
+
+Если все эти методы не сработают, попытка выполнить двоичный файл может привести к сообщению об ошибке:
+
+[source, shell]
+....
+% ./my-linux-elf-binary
+....
+
+Вывод должен быть похож на следующий:
+
+[.programlisting]
+....
+ELF binary type not known
+Abort
+....
+
+Чтобы помочь ядру FreeBSD отличить ELF-программу FreeBSD от Linux-программы, используйте man:brandelf[1]:
+
+[source, shell]
+....
+% brandelf -t Linux my-linux-elf-binary
+....
+
+=== Установка приложения на основе Linux RPM
+
+Для установки приложения на основе RPM в Linux сначала установите пакет package:archivers/rpm4[] или порт. После установки пользователь `root` может использовать следующую команду для установки файла [.filename]#.rpm#:
+
+[source, shell]
+....
+# cd /compat/linux
+# rpm2cpio < /path/to/linux.archive.rpm | cpio -id
+....
+
+При необходимости выполните `brandelf` для установленных ELF-бинарников. Заметим, что это сделает невозможной чистую деинсталляцию.
+
+=== Настройка преобразователя имен хостов
+
+Если DNS не работает или появляется эта ошибка:
+
+[.programlisting]
+....
+resolv+: "bind" is an invalid keyword resolv+:
+"hosts" is an invalid keyword
+....
+
+Настройте файл [.filename]#/compat/linux/etc/host.conf# следующим образом:
+
+[.programlisting]
+....
+order hosts, bind
+multi on
+....
+
+Это указывает, что сначала выполняется поиск в [.filename]#/etc/hosts#, а затем в DNS. Если [.filename]#/compat/linux/etc/host.conf# отсутствует, Linux-приложения используют [.filename]#/etc/host.conf# основной системы, но выдают ошибку, так как этот файл отсутствует в FreeBSD. Удалите `bind`, если сервер имён не настроен в [.filename]#/etc/resolv.conf#.
+
+[[linuxemu-misc]]
+=== Разное
+
+Дополнительная информация о работе двоичной совместимости с Linux(R) доступна в статье link:{linux-emulation}[Эмуляция Linux в FreeBSD].

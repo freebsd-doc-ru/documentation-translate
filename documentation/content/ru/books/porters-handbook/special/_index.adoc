@@ -1,0 +1,4711 @@
+---
+description: 'Особые соображения при создании нового порта FreeBSD'
+next: books/porters-handbook/flavors
+params:
+  path: /books/porters-handbook/special/
+prev: books/porters-handbook/makefiles
+showBookMenu: true
+tags: ["special considerations", "Handling Symbolic Links", "Bundled Libraries"]
+title: 'Глава 6. Особые соглашения'
+weight: 6
+---
+
+[[special]]
+= Особые соглашения
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: 6
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/porters-handbook/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+Имеется ещё несколько вещей, которые вы должны иметь в виду при создании порта. Этот раздел описывает наиболее часто встречающиеся из них.
+
+[[splitting-long-files]]
+== Разделение длинных файлов
+
+Иногда [.filename]#Makefiles# могут быть очень длинными. Например, порты rust могут содержать очень длинный список `CARGO_CRATES`. В других случаях [.filename]#Makefile# может содержать код, который варьируется в зависимости от архитектуры. В таких ситуациях может быть удобно разделить исходный [.filename]#Makefile# на несколько файлов. [.filename]#bsd.port.mk# автоматически включает некоторые типы [.filename]#Makefiles# в основной [.filename]#Makefile# порта.
+
+Вот файлы, которые система обрабатывает автоматически, если они обнаружены:
+
+* [.filename]#Makefile.crates#. Пример можно найти в пакете package:audio/ebur128[].
+* [.filename]#Makefile.inc#. Пример можно найти в пакете package:net/ntp[].
+* [.filename]#Makefile.${ARCH}-${OPSYS}#
+* [.filename]#Makefile.${OPSYS}#. Пример можно найти в пакете package:net/cvsup-static[].
+* [.filename]#Makefile.${ARCH}#
+* [.filename]#Makefile.local#
+
+Также распространённой практикой является разделение списка пакетов порта на несколько файлов, если список сильно различается в зависимости от архитектуры или выбранного флейвора. В этом случае файл [.filename]#pkg-plist# для каждой архитектуры именуется по шаблону [.filename]#pkg-plist.${ARCH}# или [.filename]#pkg-plist.${FLAVOR}#. Фреймворк не создаёт список пакетов автоматически, если существует несколько файлов [.filename]#pkg-plist#. Ответственность за выбор подходящего файла [.filename]#pkg-plist# и его присвоение переменной `PLIST` лежит на того, кто делает порт. Примеры работы с этим можно найти в портах package:audio/logitechmediaserver[] и package:deskutils/libportal[].
+
+[[staging]]
+== Staging
+
+[.filename]#bsd.port.mk# ожидает, что порты будут работать с "директорией стадии". Это означает, что порт не должен устанавливать файлы напрямую в обычные целевые директории (например, под `PREFIX`), а вместо этого в отдельную директорию, из которой затем собирается пакет. Во многих случаях это не требует прав root, что позволяет собирать пакеты от имени непривилегированного пользователя. При использовании стадии порт собирается и устанавливается в директорию стадии `STAGEDIR`. Пакет создаётся из директории стадии и затем устанавливается в систему. Инструменты Automake называют эту концепцию `DESTDIR`, но в FreeBSD `DESTDIR` имеет другое значение (см. crossref:testing[porting-prefix,`PREFIX` и `DESTDIR`]).
+
+[NOTE]
+====
+Ни один порт _на самом деле_ не должен работать от root. Этого в большинстве случаев можно избежать, используя crossref:uses[uses-uidfix,`USES=uidfix`]. Если порт всё ещё выполняет команды, такие как man:chown[8], man:chgrp[1], или принудительно устанавливает владельца или группу с помощью man:install[1], то используйте crossref:uses[uses-fakeroot,`USES=fakeroot`], чтобы подделать эти вызовы. Потребуется некоторая правка [.filename]#Makefiles# порта.
+====
+
+Метапорты, то есть порты, которые не устанавливают файлы непосредственно, а только зависят от других портов, должны по возможности избегать распаковки man:mtree[8] в каталог сборки. Это основная иерархия каталогов пакета, и эти пустые каталоги будут выглядеть лишними. Для предотвращения распаковки man:mtree[8] добавьте эту строку:
+
+[.programlisting]
+....
+NO_MTREE=	yes
+....
+
+[TIP]
+====
+Метапорты должны использовать crossref:special[uses-metaport,`USES=metaport`]. Это устанавливает значения по умолчанию для портов, которые не загружают, не собирают и не устанавливают ничего.
+====
+
+Этап подготовки включается путем добавления `STAGEDIR` к путям, используемым в целях `pre-install`, `do-install` и `post-install` (см. примеры в книге). Обычно это включает `PREFIX`, `ETCDIR`, `DATADIR`, `EXAMPLESDIR`, `DOCSDIR` и т. д. Каталоги должны создаваться как часть цели `post-install`. По возможности избегайте использования абсолютных путей.
+
+[TIP]
+====
+Порты, которые устанавливают модули ядра, должны добавлять `STAGEDIR` к пути назначения, по умолчанию это [.filename]#/boot/modules#.
+====
+
+[[staging-symlink]]
+=== Обработка символических ссылок
+
+При создании символической ссылки настоятельно рекомендуется использовать относительные пути. Используйте `${RLN}` для создания относительных символических ссылок. Эта команда использует man:install[1] для автоматического определения относительной ссылки, которую нужно создать.
+
+[[staging-ex1]]
+.Автоматическое создание относительных символических ссылок
+[example]
+====
+`${RLN}` использует относительную символическую ссылку из man:install[1], что освобождает сборщика порта от вычисления относительного пути.
+
+[.programlisting]
+....
+${RLN} ${STAGEDIR}${PREFIX}/lib/libfoo.so.42 ${STAGEDIR}${PREFIX}/lib/libfoo.so
+${RLN} ${STAGEDIR}${PREFIX}/libexec/foo/bar ${STAGEDIR}${PREFIX}/bin/bar
+${RLN} ${STAGEDIR}/var/cache/foo ${STAGEDIR}${PREFIX}/share/foo
+....
+
+Будет создано:
+
+[source, shell]
+....
+% ls -lF ${STAGEDIR}${PREFIX}/lib
+lrwxr-xr-x  1 nobody  nobody    181 Aug  3 11:27 libfoo.so@ -> libfoo.so.42
+-rwxr-xr-x  1 nobody  nobody     15 Aug  3 11:24 libfoo.so.42*
+% ls -lF ${STAGEDIR}${PREFIX}/bin
+lrwxr-xr-x  1 nobody  nobody    181 Aug  3 11:27 bar@ -> ../libexec/foo/bar
+% ls -lF ${STAGEDIRDIR}${PREFIX}/share
+lrwxr-xr-x  1 nobody  nobody    181 Aug  3 11:27 foo@ -> ../../../var/cache/foo
+....
+
+====
+
+[[bundled-libs]]
+== Встроенные библиотеки
+
+Этот раздел объясняет, почему встроенные зависимости считаются плохими и что с этим делать.
+
+[[bundled-libs-why-bad]]
+=== Почему встроенные библиотеки — это плохо
+
+Некоторое программное обеспечение требует от упаковщика найти сторонние библиотеки и добавить необходимые зависимости в порт. Другое ПО включает все необходимые библиотеки в дистрибутивный файл. Второй подход кажется проще на первый взгляд, но имеет серьёзные недостатки:
+
+Этот список частично основан на вики https://fedoraproject.org/wiki/Packaging:No_Bundled_Libraries[Fedora] и https://wiki.gentoo.org/wiki/Why_not_bundle_dependencies[Gentoo], оба распространяются по лицензии https://creativecommons.org/licenses/by-sa/3.0/[CC-BY-SA 3.0].
+
+Безопасность::
+Если уязвимости обнаружены в вышестоящей библиотеке и исправлены там, они могут остаться неисправленными в библиотеке, поставляемой с портом. Одной из причин может быть то, что автор не знает о проблеме. Это означает, что портировщик должен исправить их или обновить до не уязвимой версии и отправить исправление автору. Всё это требует времени, что приводит к тому, что программное обеспечение остаётся уязвимым дольше, чем необходимо. Это, в свою очередь, затрудняет координацию исправления без неоправданного раскрытия информации об уязвимости.
+
+Ошибки::
+Эта проблема аналогична проблеме с безопасностью в последнем абзаце, но в целом менее серьезная.
+
+Ветвление::
+Автору проще создать форк upstream-библиотеки после её включения в дистрибутив. Хотя на первый взгляд это кажется удобным, такой подход приводит к расхождению кода с исходным репозиторием, что усложняет исправление уязвимостей и других проблем в ПО. Одна из причин — затруднённое применение патчей.
++
+Еще одна проблема форкинга заключается в том, что из-за расхождения кода с основной веткой, ошибки исправляются снова и снова, вместо того чтобы быть исправленными один раз в центральном месте. Это противоречит самой идее открытого программного обеспечения.
+
+Конфликты символов::
+Когда библиотека установлена в системе, может возникнуть конфликт с встроенной в порт версией. Это может привести к немедленным ошибкам во время компиляции или компоновки. Также могут возникать ошибки при запуске программы, которые сложнее отследить. Последняя проблема может быть вызвана несовместимостью версий двух библиотек.
+
+Лицензирование::
+При объединении проектов из различных источников могут возникать проблемы с лицензиями, особенно если лицензии несовместимы.
+
+Растрата ресурсов::
+Библиотеки, поставляемые в комплекте, растрачивают ресурсы на нескольких уровнях. Сборка самого приложения занимает больше времени, особенно если эти библиотеки уже присутствуют в системе. Во время выполнения они могут занимать дополнительную память, когда общесистемная библиотека уже загружена одной программой, а входящая в комплект библиотека загружена другой программой.
+
+Пустая трата усилий::
+Когда библиотеке требуются патчи для FreeBSD, эти патчи приходится дублировать в составе библиотеки. Это приводит к потере времени разработчиков, поскольку патчи могут применяться некорректно. Кроме того, бывает сложно сразу заметить, что эти патчи вообще необходимы.
+
+[[bundled-libs-practices]]
+=== Что делать со встроенными библиотеками
+
+По возможности используйте независимую версию библиотеки, добавив `LIB_DEPENDS` в порт. Если такого порта ещё не существует, рассмотрите возможность его создания.
+
+Используйте встроенные библиотеки только в том случае, если разработчик имеет хорошую репутацию в вопросах безопасности, а использование внешних версий приводит к излишне сложным исправлениям.
+
+[NOTE]
+====
+В некоторых особых случаях, например, для эмуляторов, таких как Wine, порт должен включать библиотеки, потому что они предназначены для другой архитектуры или были изменены для использования в данном программном обеспечении. В таком случае эти библиотеки не должны быть доступны для связывания с другими портами. Добавьте `BUNDLE_LIBS=yes` в [.filename]#Makefile# порта. Это укажет man:pkg[8] не учитывать предоставляемые библиотеки. Всегда спрашивайте {portmgr}, прежде чем добавлять это в порт.
+====
+
+[[porting-shlibs]]
+== Динамические библиотеки
+
+Если ваш порт устанавливает одну или несколько динамических библиотек, определите переменную `USE_LDCONFIG`, которая приведёт к запуску из [.filename]#bsd.port.mk# команды `${LDCONFIG} -m` относительно каталога, в который устанавливается новая библиотека (как правило, это [.filename]#PREFIX/lib#), во время выполнения цели `post-install` для её регистрации в кэше динамических библиотек. Эта переменная, если она определена, также приведёт к добавлению соответствующей пары команд `@exec /sbin/ldconfig -m` и `@unexec /sbin/ldconfig -R` в ваш файл [.filename]#pkg-plist#, так что пользователь, устанавливающий пакет, сможет сразу же использовать динамическую библиотеку, а удаление пакета не приведёт к тому, что система будет предполагать, что библиотека всё ещё имеется в наличии.
+
+[.programlisting]
+....
+USE_LDCONFIG=	yes
+....
+
+Если нужно, вы можете переопределить каталог по умолчанию, задав значение `USE_LDCONFIG`, в котором должны быть перечислены каталоги, в которые устанавливаются динамические библиотеки. Например, если ваш порт устанавливает динамические библиотеки в каталоги [.filename]#PREFIX/lib/foo# и [.filename]#PREFIX/lib/bar#, то вы можете в файле [.filename]#Makefile# указать следующее:
+
+[.programlisting]
+....
+USE_LDCONFIG=	${PREFIX}/lib/foo ${PREFIX}/lib/bar
+....
+
+Будьте добры перепроверить, т.к. часто это вовсе не является необходимым и может быть решено иначе с помощью `-rpath` или установки `LD_RUN_PATH` во время компоновки (для примера смотрите package:lang/moscow_ml[]), или с помощью сценария-обёртки, который выставляет `LD_LIBRARY_PATH` перед запуском исполняемого файла как это делает package:www/seamonkey[].
+
+При установке 32-разрядных библиотек на 64-разрядной системе используйте вместо этого `USE_LDCONFIG32`.
+
+Если программное обеспечение использует crossref:special[using-autotools,autotools], в частности `libtool`, добавьте crossref:uses[uses-libtool,`USES=libtool`].
+
+Если при обновлении порта увеличивается старший номер версии библиотеки, то для всех портов, компонуемых с затронутой библиотекой, следует увеличить значение `PORTREVISION` для форсирования перекомпиляции с новой версией библиотеки.
+
+[[porting-restrictions]]
+== Порты с ограничениями на распространение или с правовым обременением
+
+Лицензии бывают разных видов, и некоторые накладывают ограничение на то, как приложение может быть оформлено в виде пакета, может ли оно продаваться для извлечения коммерческой выгоды, и так далее.
+
+[IMPORTANT]
+====
+На вас, как на человека, портирующего приложение, ложится обязанность прочесть лицензионные соглашения на программное обеспечение и удостовериться, что проект FreeBSD не будет являться их нарушителем, если будет заниматься распространением исходного кода или в бинарном виде по FTP/HTTP или на CD-ROM. Если у вас возникли сомнения, то, пожалуйста, обратитесь в {freebsd-ports}.
+====
+
+В подобных ситуациях можно использовать переменные, описываемые в последующих разделах.
+
+[[porting-restrictions-no_package]]
+=== `NO_PACKAGE`
+
+Эта переменная указывает, что мы не можем создавать для приложения двоичный пакет. К примеру, лицензия не позволяет бинарное распространение или она может запрещать распространение пакетов, созданных из изменённых исходников.
+
+Однако файлы `DISTFILES` могут свободно зеркалироваться по FTP/HTTP. Они также могут распространяться, используя CD-ROM (или на похожих носителях), если не установлена переменная `NO_CDROM`.
+
+`NO_PACKAGE` должна также использоваться, если двоичный пакет, как правило, бесполезен, а приложение должно всегда компилироваться из исходного кода. К примеру, если в приложение во время компиляции жёстко включается конфигурационная информация, привязанная к конкретной системе, то задайте переменную `NO_PACKAGE`.
+
+Значением переменной `NO_PACKAGE` должна быть строка, описывающая причину, по которой пакет не должен создаваться.
+
+[[porting-restrictions-no_cdrom]]
+=== `NO_CDROM`
+
+Эта переменная указывает на то, что, хотя мы имеем право создавать бинарные пакеты, мы не можем помещать эти пакеты или файлы `DISTFILES` порта на CD-ROM (или на похожие носители) для перепродажи. Однако бинарные пакеты и файлы `DISTFILES` порта будут оставаться доступными посредством FTP/HTTP.
+
+Если эта переменная устанавливается вместе с `NO_PACKAGE`, то только файлы порта `DISTFILES` будут доступны, и только посредством FTP/HTTP.
+
+В качестве значения `NO_CDROM` должна указываться строка, описывающая причины, по которым порт не может распространяться на CD-ROM. К примеру, это применяется, если лицензионное соглашение приложения предполагает только его "некоммерческое" использование.
+
+[[porting-restrictions-nofetchfiles]]
+=== `NOFETCHFILES`
+
+Файлы, определенные в переменной `NOFETCHFILES`, не будут извлекаться ни из одного из `MASTER_SITES`. Примером такого файла является файл, поставляемый на CD-ROM.
+
+Инструменты, проверяющие доступность этих файлов на `MASTER_SITES`, должны игнорировать эти файлы и не сообщать о них.
+
+[[porting-restrictions-restricted]]
+=== `RESTRICTED`
+
+Задайте эту переменную, если лицензия на приложение не позволяет ни зеркалировать файлы `DISTFILES`, ни распространять бинарный пакет через FTP/HTTP или на CD-ROM.
+
+Ни `NO_CDROM`, ни `NO_PACKAGE` не стоит устанавливать вместе с `RESTRICTED`, так как последняя переменная подразумевает первые две.
+
+В качестве значения `RESTRICTED` должна указываться строка, описывающая причины, по которым порт нельзя распространять. Обычно это означает, что порт использует закрытое программное обеспечение, а пользователь должен вручную сгрузить файлы `DISTFILES`, возможно, после заполнения регистрационной формы или подтверждения соглашения с условиями EULA.
+
+[[porting-restrictions-restricted_files]]
+=== `RESTRICTED_FILES`
+
+Если заданы `RESTRICTED` или `NO_CDROM`, то значение этой переменной по умолчанию соответствует `${DISTFILES} ${PATCHFILES}`, в противном случае она пуста. Если ограничены в распространении лишь некоторые из дистрибутивных файлов, то в этой переменной задаётся их список.
+
+[[porting-restrictions-legal_text]]
+=== `LEGAL_TEXT`
+
+Если порт имеет правовое обременение, которое не покрывается перечисленными выше переменными, то переменной `LEGAL_TEXT` следует присвоить строку с описанием данного обременения. Например, если было получено особое разрешение для FreeBSD на распространение двоичного файла, то эта переменная должна содержать соответствующее указание.
+
+[[porting-restrictions-legal]]
+=== [.filename]#/usr/ports/LEGAL# и `LEGAL`
+
+Порт, содержащий любую из перечисленных выше переменных, также должен быть добавлен в [.filename]#/usr/ports/LEGAL#. Первый столбец содержит шаблон совпадения с дистрибутивными файлами, имеющими ограничения на распространение. Второй столбец содержит корень порта. Третий столбец содержит вывод `make -VLEGAL`.
+
+[[porting-restrictions-examples]]
+=== Примеры
+
+Предпочтительным способом реализации утверждения "архивы исходных текстов для этого порта должны загружаться самостоятельно" является следующее:
+
+[.programlisting]
+....
+.if !exists(${DISTDIR}/${DISTNAME}${EXTRACT_SUFX})
+IGNORE=	may not be redistributed because of licensing reasons. Please visit some-website to accept their license and download ${DISTFILES} into ${DISTDIR}
+.endif
+....
+
+Это одновременно и информирует пользователя, и устанавливает нужные метаданные на пользовательской машине для использования автоматическими программами.
+
+Обратите внимание, что данная кляуза должна предшествовать подключению файла [.filename]#bsd.port.pre.mk#.
+
+[[building]]
+== Механизмы построения
+
+[[parallel-builds]]
+=== Параллельное построение портов
+
+Инфраструктура портов FreeBSD поддерживает параллельное построение с использованием множественных подпроцессов `make`, что позволяет системам SMP задействовать всю доступную мощность CPU, тем самым делая построение портов более быстрым и эффективным.
+
+Это достигается путём передачи флага `-jX` команде man:make[1]. Такое построение портов является поведением по умолчанию. К сожалению, не все порты поддерживают параллельную сборку достаточно хорошо, и поэтому может потребоваться выключить этот механизм явным образом путём добавления переменной `MAKE_JOBS_UNSAFE=yes`. Эта переменная используется в случае, когда известно, что порт ломается с `-jX`.
+
+[IMPORTANT]
+====
+При установке `MAKE_JOBS_UNSAFE` очень важно объяснить либо комментарием в [.filename]#Makefile#, либо хотя бы в сообщении коммита, _почему_ порт не собирается при включении. В противном случае практически невозможно ни исправить проблему, ни проверить, была ли она исправлена при коммите обновления в дальнейшем.
+====
+
+[[using-make]]
+=== `make`, `gmake` и `imake`
+
+Существует несколько различных реализаций `make`. Переносимому программному обеспечению часто требуется конкретная реализация, например GNU `make`, известная в FreeBSD как `gmake`.
+
+Если порт использует GNU make, добавьте `gmake` в `USES`.
+
+`MAKE_CMD` может использоваться для ссылки на конкретную команду, настроенную параметром `USES` в [.filename]#Makefile# порта. Используйте `MAKE_CMD` только внутри [.filename]##Makefile## приложения в `WRKSRC` для вызова реализации `make`, ожидаемой портируемым программным обеспечением.
+
+Если ваш порт является приложением X, которое создает файлы [.filename]#Makefile# из [.filename]#Imakefile#, используя imake, то установите `USES= imake`. Это заставит стадию конфигурирования автоматически выполнить `xmkmf -a`. Если флаг `-a` представляет для вашего порта проблему, то установите `XMKMF=xmkmf`. Если порт использует imake, но не понимает цель `install.man`, то следует установить `NO_INSTALL_MANPAGES=yes`.
+
+Если исходный [.filename]#Makefile# вашего порта имеет что-нибудь помимо `all` в качестве основной цели построения, то задайте соответствующее значение `ALL_TARGET`. То же касается `install` и `INSTALL_TARGET`.
+
+[[using-configure]]
+=== Сценарий `configure`
+
+Если ваш порт использует сценарий `configure` для получения файлов [.filename]#Makefile# из файлов [.filename]#Makefile.in#, то установите `GNU_CONFIGURE=yes`. Если вы хотите дать дополнительные параметры сценарию `configure` (аргументом по умолчанию является `--prefix=${PREFIX} --infodir=${PREFIX}/${INFO_PATH} --mandir=${MANPREFIX}/man --build=${CONFIGURE_TARGET}`), установите эти параметры в `CONFIGURE_ARGS`. Дополнительные переменные окружения можно передать, используя переменную `CONFIGURE_ENV`.
+
+[[using-configure-variables]]
+.Переменные для портов, использующих `configure`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Значение
+
+|`GNU_CONFIGURE`
+|Порт использует сценарий `configure` для подготовки построения.
+
+|`HAS_CONFIGURE`
+|То же, что и `GNU_CONFIGURE`, кроме того, что цель configure по умолчанию не добавляется в `CONFIGURE_ARGS`.
+
+|`CONFIGURE_ARGS`
+|Дополнительные параметры, передаваемые сценарию `configure`.
+
+|`CONFIGURE_ENV`
+|Дополнительные переменные окружения, задаваемые для запуска сценария `configure`.
+
+|`CONFIGURE_TARGET`
+|Переопределить цель configure по умолчанию. Значением по умолчанию является `${MACHINE_ARCH}-portbld-freebsd${OSREL}`.
+|===
+
+[[using-cmake]]
+=== Использование `cmake`
+
+Если порт использует CMake, определите `USES= cmake`.
+
+[[using-cmake-variables]]
+.Переменные для портов, использующих `cmake`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Значение
+
+|`CMAKE_ARGS`
+|Специфичные для порта флаги CMake, передаваемые в бинарный файл `cmake`.
+
+|`CMAKE_ON`
+|Для каждой записи в `CMAKE_ON` добавляется булево значение "включено" в
+`CMAKE_ARGS`. См. crossref:special[using-cmake-example2,`CMAKE_ON` и `CMAKE_OFF`].
+
+|`CMAKE_OFF`
+|Для каждой записи в `CMAKE_OFF` в `CMAKE_ARGS` добавляется отключенное булево
+значение. См. crossref:special[using-cmake-example2,`CMAKE_ON` и `CMAKE_OFF`].
+
+|`CMAKE_BUILD_TYPE`
+|Тип сборки (предопределённые профили сборки CMake). По умолчанию `Release`, или `Debug`, если установлен `WITH_DEBUG`.
+
+|`CMAKE_SOURCE_PATH`
+|Путь к исходному каталогу. По умолчанию `${WRKSRC}`.
+
+|`CONFIGURE_ENV`
+|Дополнительные переменные окружения, которые должны быть установлены для бинарного файла `cmake`.
+|===
+
+[[using-cmake-user-variables]]
+.Переменные, которые пользователи могут определить для сборок `cmake`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Значение
+
+|`CMAKE_NOCOLOR`
+|Запрещает цветной вывод сообщений при построении. Значение по умолчанию не задано, если не заданы `BATCH` или `PACKAGE_BUILDING`.
+|===
+
+CMake поддерживает следующие профили построения: `Debug`, `Release`, `RelWithDebInfo` и `MinSizeRel`. Профили `Debug` и `Release` учитывают системные флаги `\*FLAGS`; `RelWithDebInfo` и `MinSizeRel` соответственно определяют `CFLAGS` со значением `-O2 -g` и `-Os -DNDEBUG`. Значение `CMAKE_BUILD_TYPE` экспортируется в нижнем регистре в `PLIST_SUB` и должно использоваться, если порт устанавливает файлы `*.cmake` в зависимости от типа построения (для примера посмотрите на package:deskutils/strigi[]). Следует учитывать, что некоторые проекты могут определять собственные профили построения и/или форсировать конкретный тип построения через установку `CMAKE_BUILD_TYPE` в файлах [.filename]#CMakeLists.txt#. Для того чтобы порт для такого проекта учитывал `CFLAGS` и `WITH_DEBUG`, из этих файлов должны быть удалены значения `CMAKE_BUILD_TYPE`.
+
+Большинство проектов, основанных на CMake, поддерживают метод внешнего (out-of-source) построения. Для порта внешнее построение можно запросить с использованием суффикса `:outsource`. В этом случае `CONFIGURE_WRKSRC`, `BUILD_WRKSRC` и `INSTALL_WRKSRC` будут иметь значение `${WRKDIR}/.build` для каталога, содержащего файлы, получаемые на этапах конфигурации и построения; при этом каталог с исходным кодом будет оставаться без изменений.
+
+[[using-cmake-example]]
+.Пример для `USES= cmake`
+[example]
+====
+Следующий отрывок демонстрирует использование CMake для порта. `CMAKE_SOURCE_PATH` обычно не требуется, но может быть установлен, когда исходный код не находится в верхнем каталоге или если порт используется для построения части проекта.
+
+[.programlisting]
+....
+USES=			cmake
+CMAKE_SOURCE_PATH=	${WRKSRC}/subproject
+....
+
+====
+
+[[using-cmake-example2]]
+.`CMAKE_ON` и `CMAKE_OFF`
+[example]
+====
+При добавлении логических значений в `CMAKE_ARGS` проще использовать переменные `CMAKE_ON` и `CMAKE_OFF` вместо этого. Это:
+
+[.programlisting]
+....
+CMAKE_ON=	VAR1 VAR2
+CMAKE_OFF=	VAR3
+....
+
+Эквивалентно:
+
+[.programlisting]
+....
+CMAKE_ARGS=	-DVAR1:BOOL=TRUE -DVAR2:BOOL=TRUE -DVAR3:BOOL=FALSE
+....
+
+[IMPORTANT]
+======
+Это относится только к значениям по умолчанию в `CMAKE_ARGS`. Вспомогательные функции, описанные в crossref:makefiles[options-cmake_bool,`OPT_CMAKE_BOOL` и `OPT_CMAKE_BOOL_OFF`], используют ту же семантику, но для опциональных значений.
+======
+
+====
+
+[[using-scons]]
+=== Использование `scons`
+
+Если порт использует SCons, определите `USES=scons`.
+
+Чтобы сторонний [.filename]#SConstruct# учитывал все, что передается в SCons через окружение (то есть, что наиболее важно, `CC/CXX/CFLAGS/CXXFLAGS`), исправьте [.filename]#SConstruct#, чтобы сборка `Environment` создавалась следующим образом:
+
+[.programlisting]
+....
+env = Environment(**ARGUMENTS)
+....
+
+Он может быть изменён с помощью `env.Append` и `env.Replace`.
+
+[[using-cargo]]
+=== Сборка приложений на Rust с помощью `cargo`
+
+Для портов, использующих Cargo, определите `USES=cargo`.
+
+[[using-cargo-user-variables]]
+.Переменные, которые пользователи могут определить для сборок `cargo`
+[cols="1,1,1", frame="none", options="header"]
+|===
+| Переменная
+| По умолчанию
+| Описание
+
+|`CARGO_CRATES`
+| 
+|Список ящиков (crates), от которых зависит порт. Каждая запись должна быть в формате `имя_ящика-семвер`, например, `libc-0.2.40`. Поддерживающие порт могут сгенерировать этот список из файла [.filename]#Cargo.lock# с помощью команды `make cargo-crates`. Вручную обновлять версии ящиков возможно, но следует учитывать транзитивные зависимости.
+Если список, сгенерированный `make cargo-crates`, слишком велик, его можно разместить в файле `Makefile.crates` в корневом каталоге порта.
+Если такой файл присутствует, фреймворк портов автоматически загружает его.
+Это помогает сохранять основной Makefile порта в удобном для работы размере.
+
+|`CARGO_FEATURES`
+| 
+|Список функций приложения для сборки (список через пробел). Чтобы отключить все функции по умолчанию, добавьте специальный токен `--no-default-features` в `CARGO_FEATURES`. Вручную передавать его в `CARGO_BUILD_ARGS`, `CARGO_INSTALL_ARGS` и `CARGO_TEST_ARGS` не требуется.
+
+|`CARGO_CARGOTOML`
+|`${WRKSRC}/Cargo.toml`
+|Путь к файлу [.filename]#Cargo.toml#, который следует использовать.
+
+|`CARGO_CARGOLOCK`
+|`${WRKSRC}/Cargo.lock`
+|Путь к файлу [.filename]#Cargo.lock#, используемому для `make cargo-crates`. Можно указать более одного файла блокировки, если это необходимо.
+
+|`CARGO_ENV`
+| 
+|Список переменных окружения, передаваемых в Cargo, аналогично `MAKE_ENV`.
+
+|`RUSTFLAGS`
+| 
+|Флаги для передачи компилятору Rust.
+
+|`CARGO_CONFIGURE`
+|`yes`
+|Используйте стандартный `do-configure`.
+
+|`CARGO_UPDATE_ARGS`
+| 
+|Дополнительные аргументы для передачи Cargo во время фазы настройки. Допустимые аргументы можно посмотреть с помощью `cargo update --help`.
+
+|`CARGO_BUILDDEP`
+|`yes`
+|Добавить зависимость сборки на package:lang/rust[].
+
+|`CARGO_CARGO_BIN`
+|`${LOCALBASE}/bin/cargo`
+|Расположение бинарного файла `cargo`.
+
+|`CARGO_BUILD`
+|`yes`
+|Используйте значение по умолчанию `do-build`.
+
+|`CARGO_BUILD_ARGS`
+| 
+|Дополнительные аргументы для передачи Cargo во время фазы сборки. Допустимые аргументы можно посмотреть с помощью `cargo build --help`.
+
+|`CARGO_INSTALL`
+|`yes`
+|Используйте настройку `do-install` по умолчанию.
+
+|`CARGO_INSTALL_ARGS`
+| 
+|Дополнительные аргументы для передачи Cargo во время фазы установки. Допустимые аргументы можно посмотреть с помощью `cargo install --help`.
+
+|`CARGO_INSTALL_PATH`
+|`.`
+|Путь к пакету для установки. Этот аргумент передается в `cargo install` через параметр `--path`. Если указано несколько путей, `cargo install` запускается несколько раз.
+
+|`CARGO_TEST`
+|`yes`
+|Используйте значение по умолчанию `do-test`.
+
+|`CARGO_TEST_ARGS`
+| 
+|Дополнительные аргументы для передачи Cargo во время тестовой фазы. Допустимые аргументы можно посмотреть с помощью `cargo test --help`.
+
+|`CARGO_TARGET_DIR`
+|`${WRKDIR}/target`
+|Расположение выходного каталога cargo.
+
+|`CARGO_DIST_SUBDIR`
+|[.filename]#rust/crates#
+|Каталог относительно `DISTDIR`, в котором будут храниться файлы дистрибутивов пакетов (crates).
+
+|`CARGO_VENDOR_DIR`
+|`${WRKSRC}/cargo-crates`
+|Расположение каталога сторонних поставщиков ПО, в который будут извлечены все крейты. Старайтесь держать его в пределах `PATCH_WRKSRC`, чтобы упростить применение патчей.
+
+|`CARGO_USE_GITHUB`
+|`no`
+|Включить загрузку крейтов, привязанных к определённым коммитам Git на GitHub, с помощью `GH_TUPLE`. Это попытается исправить все файлы [.filename]#Cargo.toml# в `WRKDIR`, чтобы они ссылались на автономные источники вместо загрузки из репозитория Git во время сборки.
+
+|`CARGO_USE_GITLAB`
+|`no`
+|То же, что и `CARGO_USE_GITHUB`, но для экземпляров GitLab и `GL_TUPLE`.
+|===
+
+[[cargo-ex1]]
+.Создание порта для простого приложения на Rust
+[example]
+====
+Создание порта на основе Cargo — это процесс из трёх этапов. Сначала необходимо предоставить шаблон портов, который загружает дистрибутивный файл приложения:
+
+[.programlisting]
+....
+PORTNAME=	tokei
+DISTVERSIONPREFIX=	v
+DISTVERSION=	7.0.2
+CATEGORIES=	devel
+
+MAINTAINER=	tobik@FreeBSD.org
+COMMENT=	Display statistics about your code
+WWW=		https://github.com/XAMPPRocky/tokei/
+
+USES=		cargo
+USE_GITHUB=	yes
+GH_ACCOUNT=	Aaronepower
+
+.include <bsd.port.mk>
+....
+
+Сгенерировать первоначальный [.filename]#distinfo#:
+
+[source, shell]
+....
+% make makesum
+=> Aaronepower-tokei-v7.0.2_GH0.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://codeload.github.com/Aaronepower/tokei/tar.gz/v7.0.2?dummy=/Aaronepower-tokei-v7.0.2_GH0.tar.gz
+fetch: https://codeload.github.com/Aaronepower/tokei/tar.gz/v7.0.2?dummy=/Aaronepower-tokei-v7.0.2_GH0.tar.gz: size of remote file is not known
+Aaronepower-tokei-v7.0.2_GH0.tar.gz                     45 kB  239 kBps 00m00s
+....
+
+Теперь файл дистрибутива готов к использованию, и мы можем продолжить, извлекая зависимости пакета из встроенного файла [.filename]#Cargo.lock#:
+
+[source, shell]
+....
+% make cargo-crates
+CARGO_CRATES=   aho-corasick-0.6.4 \
+                ansi_term-0.11.0 \
+                arrayvec-0.4.7 \
+                atty-0.2.9 \
+                bitflags-1.0.1 \
+                byteorder-1.2.2 \
+                [...]
+....
+
+Вывод этой команды необходимо вставить напрямую в Makefile:
+
+[.programlisting]
+....
+PORTNAME=	tokei
+DISTVERSIONPREFIX=	v
+DISTVERSION=	7.0.2
+CATEGORIES=	devel
+
+MAINTAINER=	tobik@FreeBSD.org
+COMMENT=	Display statistics about your code
+WWW=		https://github.com/XAMPPRocky/tokei/
+
+USES=		cargo
+USE_GITHUB=	yes
+GH_ACCOUNT=	Aaronepower
+
+CARGO_CRATES=   aho-corasick-0.6.4 \
+                ansi_term-0.11.0 \
+                arrayvec-0.4.7 \
+                atty-0.2.9 \
+                bitflags-1.0.1 \
+                byteorder-1.2.2 \
+                [...]
+
+.include <bsd.port.mk>
+....
+
+[.filename]#distinfo# необходимо перегенерировать, чтобы включить все дистрибутивные файлы крейтов:
+
+[source, shell]
+....
+% make makesum
+=> rust/crates/aho-corasick-0.6.4.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://crates.io/api/v1/crates/aho-corasick/0.6.4/download?dummy=/rust/crates/aho-corasick-0.6.4.tar.gz
+rust/crates/aho-corasick-0.6.4.tar.gz         100% of   24 kB 6139 kBps 00m00s
+=> rust/crates/ansi_term-0.11.0.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://crates.io/api/v1/crates/ansi_term/0.11.0/download?dummy=/rust/crates/ansi_term-0.11.0.tar.gz
+rust/crates/ansi_term-0.11.0.tar.gz           100% of   16 kB   21 MBps 00m00s
+=> rust/crates/arrayvec-0.4.7.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://crates.io/api/v1/crates/arrayvec/0.4.7/download?dummy=/rust/crates/arrayvec-0.4.7.tar.gz
+rust/crates/arrayvec-0.4.7.tar.gz             100% of   22 kB 3237 kBps 00m00s
+=> rust/crates/atty-0.2.9.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://crates.io/api/v1/crates/atty/0.2.9/download?dummy=/rust/crates/atty-0.2.9.tar.gz
+rust/crates/atty-0.2.9.tar.gz                 100% of 5898  B   81 MBps 00m00s
+=> rust/crates/bitflags-1.0.1.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+[...]
+....
+
+Порт теперь готов к тестовой сборке и дальнейшим настройкам, таким как создание plist, написание описания, добавление информации о лицензии, опций и т.д., как обычно.
+
+Если вы не тестируете свой порт в чистой среде, например, с использованием poudriere, не забудьте выполнить `make clean` перед любым тестированием.
+====
+
+[[cargo-ex2]]
+.Включение дополнительных возможностей приложений
+[example]
+====
+Некоторые приложения определяют дополнительные возможности в своем [.filename]#Cargo.toml#. Их можно включить при компиляции, установив `CARGO_FEATURES` в порте.
+
+Здесь мы включаем функции `json` и `yaml` в Tokei:
+
+[.programlisting]
+....
+CARGO_FEATURES=	json yaml
+....
+
+====
+
+[[cargo-ex4]]
+.Кодирование характеристик приложений как параметров порта
+[example]
+====
+Пример раздела `[features]` в [.filename]#Cargo.toml# может выглядеть так:
+
+[.programlisting]
+....
+[features]
+pulseaudio_backend = ["librespot-playback/pulseaudio-backend"]
+portaudio_backend = ["librespot-playback/portaudio-backend"]
+default = ["pulseaudio_backend"]
+....
+
+`pulseaudio_backend` — это функция по умолчанию. Она всегда включена, если мы явно не отключим функции по умолчанию, добавив `--no-default-features` в `CARGO_FEATURES`. Здесь мы превращаем функции `portaudio_backend` и `pulseaudio_backend` в опции порта:
+
+[.programlisting]
+....
+CARGO_FEATURES=	--no-default-features
+
+OPTIONS_DEFINE=	PORTAUDIO PULSEAUDIO
+
+PORTAUDIO_VARS=		CARGO_FEATURES+=portaudio_backend
+PULSEAUDIO_VARS=	CARGO_FEATURES+=pulseaudio_backend
+....
+
+====
+
+[[cargo-ex3]]
+.Перечисление лицензий крейтов
+[example]
+====
+Крейты имеют собственные лицензии. Важно знать, какие они, при добавлении блока `LICENSE` в порт (см. crossref:makefiles[licenses,Лицензии]). Вспомогательная цель `cargo-crates-licenses` попытается перечислить все лицензии всех ящиков, определённых в `CARGO_CRATES`.
+
+[source, shell]
+....
+% make cargo-crates-licenses
+aho-corasick-0.6.4  Unlicense/MIT
+ansi_term-0.11.0    MIT
+arrayvec-0.4.7      MIT/Apache-2.0
+atty-0.2.9          MIT
+bitflags-1.0.1      MIT/Apache-2.0
+byteorder-1.2.2     Unlicense/MIT
+[...]
+....
+
+[NOTE]
+======
+Названия лицензий, которые выводит `make cargo-crates-licenses`, являются SPDX 2.1-совместимыми лицензионными выражениями, которые не совпадают с названиями лицензий, определёнными в фреймворке портов. Их необходимо перевести в названия из crossref:makefiles[licenses-license-list,Списка предопределённых лицензий].
+======
+
+====
+
+[[using-meson]]
+=== Использование `meson`
+
+Для портов, использующих Meson, определите `USES=meson`.
+
+[[using-meson-variables]]
+.Переменные для портов, использующих `meson`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Описание
+
+|`MESON_ARGS`
+|Порт-специфичные флаги Meson, передаваемые в бинарный файл `meson`.
+
+|`MESON_BUILD_DIR`
+|Путь к директории сборки относительно `WRKSRC`. По умолчанию — `_build`.
+|===
+
+[[using-meson-example]]
+.Пример `USES=meson`
+[example]
+====
+Этот фрагмент демонстрирует использование Meson для порта.
+
+[.programlisting]
+....
+USES=		meson
+MESON_ARGS=	-Dfoo=enabled
+....
+
+====
+
+[[using-go]]
+=== Создание приложений на Go
+
+Для портов, использующих Go, определите `USES=go`. Обратитесь к crossref:uses[uses-go,`go`] для получения списка переменных, которые можно задать для управления процессом сборки.
+
+[[go-ex1]]
+.Создание порта для приложения на основе модулей Go
+[example]
+====
+В большинстве случаев достаточно установить переменную `GO_MODULE` в значение, указанное директивой `module` в `go.mod`:
+
+[.programlisting]
+....
+PORTNAME=       hey
+DISTVERSIONPREFIX=	v
+DISTVERSION=    0.1.4
+CATEGORIES=     benchmarks
+
+MAINTAINER=     dmgk@FreeBSD.org
+COMMENT=        Tiny program that sends some load to a web application
+WWW=            https://github.com/rakyll/hey/
+
+LICENSE=        APACHE20
+LICENSE_FILE=   ${WRKSRC}/LICENSE
+
+USES=           go:modules
+GO_MODULE=      github.com/rakyll/hey
+
+PLIST_FILES=    bin/hey
+
+.include <bsd.port.mk>
+....
+
+Если «простой» способ не подходит или требуется больший контроль над зависимостями, полный процесс переноса описан ниже.
+
+Создание порта на основе Go — это процесс из пяти этапов. Сначала необходимо предоставить шаблон портов, который загружает дистрибутивный файл приложения:
+
+[.programlisting]
+....
+PORTNAME=	ghq
+DISTVERSIONPREFIX=	v
+DISTVERSION=	0.12.5
+CATEGORIES=	devel
+
+MAINTAINER=	tobik@FreeBSD.org
+COMMENT=	Remote repository management made easy
+WWW=		https://github.com/x-motemen/ghq/
+
+USES=		go:modules
+USE_GITHUB=	yes
+GH_ACCOUNT=	motemen
+
+.include <bsd.port.mk>
+....
+
+Сгенерировать первоначальный [.filename]#distinfo#:
+
+[source, shell]
+....
+% make makesum
+===>  License MIT accepted by the user
+=> motemen-ghq-v0.12.5_GH0.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://codeload.github.com/motemen/ghq/tar.gz/v0.12.5?dummy=/motemen-ghq-v0.12.5_GH0.tar.gz
+fetch: https://codeload.github.com/motemen/ghq/tar.gz/v0.12.5?dummy=/motemen-ghq-v0.12.5_GH0.tar.gz: size of remote file is not known
+motemen-ghq-v0.12.5_GH0.tar.gz                          32 kB  177 kBps    00s
+....
+
+Теперь файл дистрибутива готов к использованию, и мы можем извлечь необходимые зависимости модуля Go. Этот шаг требует наличия установленного пакета package:ports-mgmt/modules2tuple[]:
+
+[source, shell]
+....
+% make gomod-vendor
+[...]
+GH_TUPLE=	\
+		Songmu:gitconfig:v0.0.2:songmu_gitconfig/vendor/github.com/Songmu/gitconfig \
+		daviddengcn:go-colortext:186a3d44e920:daviddengcn_go_colortext/vendor/github.com/daviddengcn/go-colortext \
+		go-yaml:yaml:v2.2.2:go_yaml_yaml/vendor/gopkg.in/yaml.v2 \
+		golang:net:3ec191127204:golang_net/vendor/golang.org/x/net \
+		golang:sync:112230192c58:golang_sync/vendor/golang.org/x/sync \
+		golang:xerrors:3ee3066db522:golang_xerrors/vendor/golang.org/x/xerrors \
+		motemen:go-colorine:45d19169413a:motemen_go_colorine/vendor/github.com/motemen/go-colorine \
+		urfave:cli:v1.20.0:urfave_cli/vendor/github.com/urfave/cli
+....
+
+Вывод этой команды необходимо вставить напрямую в Makefile:
+
+[.programlisting]
+....
+PORTNAME=	ghq
+DISTVERSIONPREFIX=	v
+DISTVERSION=	0.12.5
+CATEGORIES=	devel
+
+MAINTAINER=	tobik@FreeBSD.org
+COMMENT=	Remote repository management made easy
+WWW=		https://github.com/x-motemen/ghq/
+
+USES=		go:modules
+USE_GITHUB=	yes
+GH_ACCOUNT=	motemen
+GH_TUPLE=	Songmu:gitconfig:v0.0.2:songmu_gitconfig/vendor/github.com/Songmu/gitconfig \
+		daviddengcn:go-colortext:186a3d44e920:daviddengcn_go_colortext/vendor/github.com/daviddengcn/go-colortext \
+		go-yaml:yaml:v2.2.2:go_yaml_yaml/vendor/gopkg.in/yaml.v2 \
+		golang:net:3ec191127204:golang_net/vendor/golang.org/x/net \
+		golang:sync:112230192c58:golang_sync/vendor/golang.org/x/sync \
+		golang:xerrors:3ee3066db522:golang_xerrors/vendor/golang.org/x/xerrors \
+		motemen:go-colorine:45d19169413a:motemen_go_colorine/vendor/github.com/motemen/go-colorine \
+		urfave:cli:v1.20.0:urfave_cli/vendor/github.com/urfave/cli
+
+.include <bsd.port.mk>
+....
+
+[.filename]#distinfo# необходимо обновить, чтобы включить все дистрибутивные файлы:
+
+[source, shell]
+....
+% make makesum
+=> Songmu-gitconfig-v0.0.2_GH0.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://codeload.github.com/Songmu/gitconfig/tar.gz/v0.0.2?dummy=/Songmu-gitconfig-v0.0.2_GH0.tar.gz
+fetch: https://codeload.github.com/Songmu/gitconfig/tar.gz/v0.0.2?dummy=/Songmu-gitconfig-v0.0.2_GH0.tar.gz: size of remote file is not known
+Songmu-gitconfig-v0.0.2_GH0.tar.gz                    5662  B  936 kBps    00s
+=> daviddengcn-go-colortext-186a3d44e920_GH0.tar.gz doesn't seem to exist in /usr/ports/distfiles/.
+=> Attempting to fetch https://codeload.github.com/daviddengcn/go-colortext/tar.gz/186a3d44e920?dummy=/daviddengcn-go-colortext-186a3d44e920_GH0.tar.gz
+fetch: https://codeload.github.com/daviddengcn/go-colortext/tar.gz/186a3d44e920?dummy=/daviddengcn-go-colortext-186a3d44e920_GH0.tar.gz: size of remote file is not known
+daviddengcn-go-colortext-186a3d44e920_GH0.tar.        4534  B 1098 kBps    00s
+[...]
+....
+
+Порт теперь готов к тестовой сборке и дальнейшим настройкам, таким как создание plist, написание описания, добавление информации о лицензии, опций и т.д., как обычно.
+
+Если вы не тестируете свой порт в чистой среде, например, с использованием poudriere, не забудьте выполнить `make clean` перед любым тестированием.
+====
+
+[[go-ex2]]
+.Установка имени выходного бинарного файла или пути установки
+[example]
+====
+Некоторые порты требуют установки результирующего бинарного файла под другим именем или в путь, отличный от стандартного `${PREFIX}/bin`. Это можно сделать с помощью синтаксиса кортежа `GO_TARGET`, например:
+
+[.programlisting]
+....
+GO_TARGET=  ./cmd/ipfs:ipfs-go
+....
+
+установит бинарный файл `ipfs` как `${PREFIX}/bin/ipfs-go` и
+
+[.programlisting]
+....
+GO_TARGET=  ./dnscrypt-proxy:${PREFIX}/sbin/dnscrypt-proxy
+....
+
+установит `dnscrypt-proxy` в `${PREFIX}/sbin`.
+====
+
+[[using-cabal]]
+=== Построение приложений на Haskell с помощью `cabal`
+
+Для портов, использующих Cabal, система сборки определяет `USES=cabal`. Обратитесь к crossref:uses[uses-cabal,`cabal`] для получения списка переменных, которые можно задать для управления процессом сборки.
+
+[[cabal-ex1]]
+.Создание порта для приложения Haskell с Hackage
+[example]
+====
+При подготовке порта Haskell Cabal требуются программы package:devel/hs-cabal-install[] и package:ports-mgmt/hs-cabal2tuple[], поэтому убедитесь, что они установлены заранее. Сначала необходимо определить общие переменные портов, которые позволяют cabal-install загрузить файл дистрибутива пакета:
+
+[.programlisting]
+....
+PORTNAME=	ShellCheck
+DISTVERSION=	0.6.0
+CATEGORIES=	devel
+
+MAINTAINER=	haskell@FreeBSD.org
+COMMENT=	Shell script analysis tool
+WWW=		https://www.shellcheck.net/
+
+USES=		cabal
+
+.include <bsd.port.mk>
+....
+
+Этот минимальный Makefile загружает файл дистрибутива с помощью вспомогательной цели `cabal-extract`:
+
+[source, shell]
+....
+% make cabal-extract
+[...]
+Downloading the latest package list from hackage.haskell.org
+cabal get ShellCheck-0.6.0
+Downloading  ShellCheck-0.6.0
+Downloaded   ShellCheck-0.6.0
+Unpacking to ShellCheck-0.6.0/
+....
+
+Теперь, когда у нас есть файл описания пакета ShellCheck.cabal в `${WRKSRC}`, мы можем использовать `cabal-configure` для создания плана сборки:
+
+[source, shell]
+....
+% make cabal-configure
+[...]
+Resolving dependencies...
+Build profile: -w ghc-8.10.7 -O1
+In order, the following would be built (use -v for more details):
+ - Diff-0.4.1 (lib) (requires download & build)
+ - OneTuple-0.3.1 (lib) (requires download & build)
+[...]
+....
+
+После завершения можно сгенерировать список необходимых зависимостей:
+
+[source, shell]
+....
+% make make-use-cabal
+USE_CABAL=	QuickCheck-2.12.6.1 \
+		hashable-1.3.0.0 \
+		integer-logarithms-1.0.3 \
+[...]
+....
+
+Пакеты Haskell могут содержать ревизии, как и порты FreeBSD. Ревизии могут затрагивать только файлы [.filename]#.cabal#. Обратите внимание на дополнительные номера версий после символа `_`. Замените старый список `USE_CABAL` на вновь сгенерированный.
+
+Наконец, файл [.filename]#distinfo# необходимо перегенерировать, чтобы он содержал все файлы дистрибутива:
+
+[source, shell]
+....
+% make makesum
+=> ShellCheck-0.6.0.tar.gz doesn't seem to exist in /usr/local/poudriere/ports/git/distfiles/cabal.
+=> Attempting to fetch https://hackage.haskell.org/package/ShellCheck-0.6.0/ShellCheck-0.6.0.tar.gz
+ShellCheck-0.6.0.tar.gz                                136 kB  642 kBps    00s
+=> QuickCheck-2.12.6.1/QuickCheck-2.12.6.1.tar.gz doesn't seem to exist in /usr/local/poudriere/ports/git/distfiles/cabal.
+=> Attempting to fetch https://hackage.haskell.org/package/QuickCheck-2.12.6.1/QuickCheck-2.12.6.1.tar.gz
+QuickCheck-2.12.6.1/QuickCheck-2.12.6.1.tar.gz          65 kB  361 kBps    00s
+[...]
+....
+
+Порт теперь готов к тестовой сборке и дальнейшим настройкам, таким как создание plist, написание описания, добавление информации о лицензии, опций и т.д., как обычно.
+
+Если вы не тестируете свой порт в чистой среде, например, с использованием poudriere, не забудьте выполнить `make clean` перед любым тестированием.
+====
+
+Некоторые порты Haskell устанавливают различные файлы данных в `share/${PORTNAME}`. В таких случаях требуется особая обработка на стороне порта. Порт должен определить параметр `CABAL_WRAPPER_SCRIPTS`, перечислив каждый исполняемый файл, который будет использовать файлы данных. Более того, в редких случаях портируемая программа использует файлы данных других пакетов Haskell, и тогда на помощь приходит `FOO_DATADIR_VARS`.
+
+[[cabal-ex2]]
+.Обработка файлов данных в порте Haskell
+[example]
+====
+`devel/hs-profiteur` — это приложение на Haskell, которое генерирует одностраничный HTML с некоторым содержимым.
+
+[.programlisting]
+....
+PORTNAME=	profiteur
+
+[...]
+
+USES=		cabal
+
+USE_CABAL=	OneTuple-0.3.1_2 \
+		QuickCheck-2.14.2 \
+		[...]
+
+.include <bsd.port.mk>
+....
+
+Он устанавливает HTML-шаблоны в `share/profiteur`, поэтому необходимо добавить параметр `CABAL_WRAPPER_SCRIPTS`:
+
+[.programlisting]
+....
+[...]
+
+USE_CABAL=	OneTuple-0.3.1_2 \
+		QuickCheck-2.14.2 \
+		[...]
+
+
+CABAL_WRAPPER_SCRIPTS=		${CABAL_EXECUTABLES}
+
+.include <bsd.port.mk>
+....
+
+Программа также пытается получить доступ к файлу `jquery.js`, который является частью пакета Haskell `js-jquery-3.3.1`. Чтобы этот файл был найден, необходимо, чтобы скрипт-обёртка искал файлы данных `js-jquery` также в `share/profiteur`. Для этого используется `profiteur_DATADIR_VARS`:
+
+[.programlisting]
+....
+[...]
+
+CABAL_WRAPPER_SCRIPTS=		${CABAL_EXECUTABLES}
+profiteur_DATADIR_VARS=		js-jquery
+
+.include <bsd.port.mk>
+....
+
+Теперь порт установит непосредственно бинарный файл в `libexec/cabal/profiteur`, а скрипт — в `bin/profiteur`.
+
+====
+
+Не существует простого способа определить подходящее значение для параметра `FOO_DATADIR_VARS`, кроме как запустить программу и проверить, что всё работает. К счастью, необходимость использовать `FOO_DATADIR_VARS` возникает очень редко.
+
+Еще один крайний случай при переносе сложных программ на Haskell — наличие зависимостей от систем контроля версий (VCS) в файле `cabal.project`.
+
+[[cabal-ex3]]
+.Портирование приложений Haskell с зависимостями от VCS
+[example]
+====
+
+`net-p2p/cardano-node` — это чрезвычайно сложное программное обеспечение. В его `cabal.project` содержится множество блоков, подобных этому:
+
+[.programlisting]
+....
+[...]
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/cardano-crypto
+  tag: f73079303f663e028288f9f4a9e08bcca39a923e
+[...]
+....
+
+Зависимости типа `source-repository-package` автоматически подтягиваются `cabal` в процессе сборки. К сожалению, это приводит к использованию сети после этапа `fetch`, что запрещено в рамках системы портов. Эти исходники необходимо указать в Makefile порта. Вспомогательная цель `make-use-cabal` может упростить работу с пакетами, размещёнными на GitHub. Запуск этой цели после стандартных `cabal-extract` и `cabal-configure` позволит получить не только параметр `USE_CABAL`, но и `GH_TUPLE`:
+
+[source, shell]
+....
+% make make-use-cabal
+USE_CABAL=	Diff-0.4.1 \
+		Glob-0.10.2_3 \
+		HUnit-1.6.2.0 \
+		[...]
+
+GH_TUPLE=		input-output-hk:cardano-base:0f3a867493059e650cda69e20a5cbf1ace289a57:cardano_base/dist-newstyle/src/cardano-b_-c8db9876882556ed \
+		input-output-hk:cardano-crypto:f73079303f663e028288f9f4a9e08bcca39a923e:cardano_crypto/dist-newstyle/src/cardano-c_-253fd88117badd8f \
+		[...]
+....
+
+Может быть полезно отделить элементы `GH_TUPLE`, поступающие из `make-use-cabal`, от остальных, чтобы упростить обновление порта:
+
+[.programlisting]
+....
+GH_TUPLE=	input-output-hk:cardano-base:0f3a867493059e650cda69e20a5cbf1ace289a57:cardano_base/dist-newstyle/src/cardano-b_-c8db9876882556ed \
+		input-output-hk:cardano-crypto:f73079303f663e028288f9f4a9e08bcca39a923e:cardano_crypto/dist-newstyle/src/cardano-c_-253fd88117badd8f \
+		[...]
+
+GH_TUPLE+=	bitcoin-core:secp256k1:ac83be33d0956faf6b7f61a60ab524ef7d6a473a:secp
+....
+
+Версия Haskell-портов с зависимостями от систем контроля версий временно требует следующего обходного решения:
+
+[.programlisting]
+....
+BINARY_ALIAS=	git=true
+....
+
+====
+
+[[using-autotools]]
+== Использование GNU Autotools
+
+Если порту требуется какое-либо программное обеспечение GNU Autotools, добавьте `USES=autoreconf`. Подробнее см. в crossref:uses[uses-autoreconf,`autoreconf`].
+
+[[using-gettext]]
+== Использование GNU `gettext`
+
+[[using-gettext-basic]]
+=== Простые варианты использования
+
+Если порт требует `gettext`, установите `USES=gettext`, и порт унаследует зависимость от [.filename]#libintl.so# из пакета package:devel/gettext[]. Другие значения для использования `gettext` перечислены в crossref:uses[uses-gettext,`USES=gettext`].
+
+Довольно распространённый случай — порт, использующий `gettext` и `configure`. Обычно GNU `configure` должен автоматически находить `gettext`.
+
+[.programlisting]
+....
+USES=	gettext
+GNU_CONFIGURE=	yes
+....
+
+Если он не сработает, можно указать расположение `gettext` через `CPPFLAGS` и `LDFLAGS`, используя `localbase` следующим образом:
+
+[.programlisting]
+....
+USES=	gettext localbase:ldflags
+GNU_CONFIGURE=	yes
+....
+
+[[using-gettext-optional]]
+=== Оптимальное использование
+
+Некоторые программные продукты позволяют отключать NLS, к примеру, передавая параметр `--disable-nls` сценарию `configure`. В этом случае ваш порт должен использовать `gettext`, в зависимости от значения `NLS`. Для портов небольшой или средней сложности вы можете полагаться на следующую идиому:
+
+[.programlisting]
+....
+GNU_CONFIGURE=		yes
+
+OPTIONS_DEFINE=		NLS
+OPTIONS_SUB=		yes
+
+NLS_USES=		gettext
+NLS_CONFIGURE_ENABLE=	nls
+
+.include <bsd.port.mk>
+....
+
+Или используя старый способ с опциями:
+
+[.programlisting]
+....
+GNU_CONFIGURE=		yes
+
+OPTIONS_DEFINE=		NLS
+
+.include <bsd.port.options.mk>
+
+.if ${PORT_OPTIONS:MNLS}
+USES+=			gettext
+PLIST_SUB+=		NLS=""
+.else
+CONFIGURE_ARGS+=	--disable-nls
+PLIST_SUB+=		NLS="@comment "
+.endif
+
+.include <bsd.port.mk>
+....
+
+Следующий пункт в списке задач — организовать условное включение файлов каталогов сообщений в упаковочный список. Часть, связанная с [.filename]#Makefile#, уже предусмотрена идиомой. Это объясняется в разделе crossref:plist[plist-sub,расширенные практики работы с [.filename]#pkg-plist#]. Вкратце, каждое вхождение `%%NLS%%` в [.filename]#pkg-plist# будет заменено на "`@comment `", если NLS отключен, или на пустую строку, если NLS включен. Следовательно, строки с префиксом `%%NLS%%` станут обычными комментариями в итоговом упаковочном списке, если NLS выключен; в противном случае префикс будет просто удален. Затем вставьте `%%NLS%%` перед каждым путем к файлу каталога сообщений в [.filename]#pkg-plist#. Например:
+
+[.programlisting]
+....
+%%NLS%%share/locale/fr/LC_MESSAGES/foobar.mo
+%%NLS%%share/locale/no/LC_MESSAGES/foobar.mo
+....
+
+В особо сложных случаях вам понадобиться использовать более продвинутые техники, чем данный рецепт, такие как crossref:plist[plist-dynamic,динамические списки упаковки].
+
+[[using-gettext-catalog-directories]]
+=== Управление каталогами сообщений
+
+Существует момент, который следует учитывать при установке файлов каталогов сообщений. Целевые каталоги для размещения, расположенные под [.filename]#LOCALBASE/shared/locale#, редко когда должны создаваться и удаляться портом. Для наиболее популярных языков имеются собственные каталоги, перечисленные в [.filename]#PORTSDIR/Templates/BSD.local.dist#. Каталоги для множества других языков управляются с помощью порта package:devel/gettext[]. Обратите внимание на его [.filename]#pkg-plist# и посмотрите, куда данный порт собирается установить файлы каталогов сообщений для единственного в своем роде языка.
+
+[[using-perl]]
+== Использование Perl
+
+Если `MASTER_SITES` установлена в значение `CPAN`, то правильная поддиректория выбирается автоматически. Если подкаталог по умолчанию указан неверно, можно использовать `CPAN/Module` для его изменения. Также можно установить `MASTER_SITES` в старое значение `MASTER_SITE_PERL_CPAN`, тогда предпочтительным значением `MASTER_SITE_SUBDIR` будет имя иерархии выше уровнем. Например, рекомендуемое значение для `p5-Module-Name` - `Module`. Иерархию верхнего уровня можно посмотреть на https://cpan.org/modules/by-module/[cpan.org]. Это гарантирует работоспособность порта при смене автора модуля.
+
+Исключением этого правила является отсутствие соответствующего каталога или файла с дистрибутивом в этом каталоге. В качестве `MASTER_SITE_SUBDIR` в этом случае разрешается использовать id автора. Можно использовать макрос `CPAN:AUTHOR`, который будет преобразован в хешированный каталог автора. Например, `CPAN:AUTHOR` преобразуется в `authors/id/A/AU/AUTHOR`.
+
+Когда порту требуется поддержка Perl, он должен установить `USES=perl5` с опциональным `USE_PERL5`, как описано в crossref:uses[uses-perl5,описание USES для perl5].
+
+[[using-perl-variables]]
+.Переменные (только для чтения) для портов, использующих Perl
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменные (только для чтения)
+| Значение
+
+|`PERL`
+|Полный путь к интерпретатору Perl 5, будь то системный или установленный из порта, но без номера версии. Используйте это, когда программному обеспечению требуется путь к интерпретатору Perl. Для замены строк "``#!``" в скриптах используйте crossref:uses[uses-shebangfix,`shebangfix`].
+
+|`PERL_VERSION`
+|Полная версия Perl установлена (например, `5.8.9`).
+
+|`PERL_LEVEL`
+|Установленная версия Perl в виде целого числа формата `MNNNPP` (например, `500809`).
+
+|`PERL_ARCH`
+|Где Perl хранит архитектурно-зависимые библиотеки. По умолчанию: `${ARCH}-freebsd`.
+
+|`PERL_PORT`
+|Имя порта Perl, который установлен (например, `perl5`).
+
+|`SITE_PERL`
+|Имя каталога, в котором размещаются специфичные для сайта пакеты Perl. Это значение добавляется в `PLIST_SUB`.
+|===
+
+[NOTE]
+====
+Порты Perl-модулей, у которых нет официального сайта, должны ссылаться на `cpan.org` в строке WWW файла [.filename]#Makefile#. Предпочтительный формат URL: `https://search.cpan.org/dist/Module-Name/` (включая завершающий слеш).
+====
+
+[NOTE]
+====
+Не используйте `${SITE_PERL}` в объявлениях зависимостей. Это предполагает, что был включён файл [.filename]#perl5.mk#, что не всегда верно. Порты, зависящие от этого порта, будут иметь некорректные зависимости, если файлы этого порта будут перемещены во время обновления. Правильный способ объявления зависимостей модулей Perl показан в примере ниже.
+====
+
+[[use-perl-dependency-example]]
+.Пример зависимости Perl
+[example]
+====
+[.programlisting]
+....
+p5-IO-Tee>=0.64:devel/p5-IO-Tee
+....
+
+====
+
+Для портов Perl, которые устанавливают страницы руководства, макросы `PERL5_MAN3` и `PERL5_MAN1` могут использоваться внутри [.filename]#pkg-plist#. Например,
+
+[.programlisting]
+....
+lib/perl5/5.14/man/man1/event.1.gz
+lib/perl5/5.14/man/man3/AnyEvent::I3.3.gz
+....
+
+может быть заменено на
+
+[.programlisting]
+....
+%%PERL5_MAN1%%/event.1.gz
+%%PERL5_MAN3%%/AnyEvent::I3.3.gz
+....
+
+[NOTE]
+====
+Для других разделов (_x_ в `2` и `4`–`9`) макросы `PERL5_MAN_x_` отсутствуют, так как они устанавливаются в обычные каталоги.
+====
+
+[[use-perl-ex-build]]
+.Порт, требующий Perl только для сборки
+[example]
+====
+Поскольку значение USE_PERL5 по умолчанию включает build и run, установите его в:
+
+[.programlisting]
+....
+USES=		perl5
+USE_PERL5=	build
+....
+
+====
+
+[[use-perl-ex-patch]]
+.Порт, который также требует Perl для исправления
+[example]
+====
+Время от времени использования man:sed[1] для исправлений недостаточно. Когда использование man:perl[1] проще, примените:
+
+[.programlisting]
+....
+USES=		perl5
+USE_PERL5=	patch build run
+....
+
+====
+
+[[use-perl-ex-configure]]
+.Модуль Perl, для сборки которого требуется `ExtUtils::MakeMaker`
+[example]
+====
+Большинство модулей Perl поставляются с конфигурационным скриптом [.filename]#Makefile.PL#. В этом случае установите:
+
+[.programlisting]
+....
+USES=		perl5
+USE_PERL5=	configure
+....
+
+====
+
+[[use-perl-ex-modbuild]]
+.Модуль Perl, для сборки которого требуется `Module::Build`
+[example]
+====
+Когда модуль Perl поставляется с конфигурационным скриптом [.filename]#Build.PL#, он может требовать Module::Build, и в этом случае установите
+
+[.programlisting]
+....
+USES=		perl5
+USE_PERL5=	modbuild
+....
+
+Если вместо этого требуется Module::Build::Tiny, установите
+
+[.programlisting]
+....
+USES=		perl5
+USE_PERL5=	modbuildtiny
+....
+
+====
+
+[[using-x11]]
+== Использование X11
+
+[[x11-variables]]
+=== Компоненты X.Org
+
+Реализация X11, доступная в Коллекции портов, — это X.Org. Если приложение зависит от компонентов X, добавьте `USES= xorg` и укажите необходимые компоненты в `USE_XORG`. Полный список можно найти в crossref:uses[uses-xorg,`xorg`].
+
+Проект Mesa — это инициатива по предоставлению свободной реализации OpenGL. Чтобы указать зависимость от различных компонентов этого проекта, используйте `USES=gl` и `USE_GL`. См. crossref:uses[uses-gl,`gl`] для полного списка доступных компонентов. Для обратной совместимости значение `yes` соответствует `glu`.
+
+[[use-xorg-example]]
+.Пример `USE_XORG`
+[example]
+====
+[.programlisting]
+....
+USES=		gl xorg
+USE_GL=		glu
+USE_XORG=	xrender xft xkbfile xt xaw
+....
+
+====
+
+[[using-xorg-variables]]
+.Переменные для портов, использующих X
+[cols="1,1", frame="none"]
+|===
+|`USES= imake`
+|Порт использует `imake`.
+
+|`XMKMF`
+|Установить путь к `xmkmf`, если он отсутствует в `PATH`. По умолчанию: `xmkmf -a`.
+|===
+
+[[using-x11-vars]]
+.Использование переменных, связанных с X11
+[example]
+====
+[.programlisting]
+....
+# Use some X11 libraries
+USES=		xorg
+USE_XORG=	x11 xpm
+....
+
+====
+
+[[x11-motif]]
+=== Порты, требующие Motif
+
+Если порт требует библиотеку Motif, определите `USES= motif` в [.filename]#Makefile#. Реализация Motif по умолчанию — это package:x11-toolkits/open-motif[]. Пользователи могут выбрать package:x11-toolkits/lesstif[] вместо этого, установив `WANT_LESSTIF` в своём [.filename]#make.conf#. Аналогично package:x11-toolkits/open-motif-devel[] можно выбрать, установив `WANT_OPEN_MOTIF_DEVEL` в [.filename]#make.conf#.
+
+`MOTIFLIB` будет установлен в файле [.filename]#motif.mk# для ссылки на соответствующую библиотеку Motif. Пожалуйста, исправьте исходный код порта, чтобы использовать `${MOTIFLIB}` везде, где библиотека Motif упоминается в оригинальном [.filename]#Makefile# или [.filename]#Imakefile#.
+
+Есть два распространённых случая:
+
+* Если порт ссылается на библиотеку Motif как `-lXm` в своем [.filename]#Makefile# или [.filename]#Imakefile#, замените это на `${MOTIFLIB}`.
+* Если порт использует `XmClientLibs` в своем [.filename]#Imakefile#, замените это на `${MOTIFLIB} ${XTOOLLIB} ${XLIB}`.
+
+Обратите внимание, что `MOTIFLIB` (обычно) раскрывается в `-L/usr/local/lib -lXm -lXp` или `/usr/local/lib/libXm.a`, поэтому нет необходимости добавлять `-L` или `-l` перед этим.
+
+[[x11-fonts]]
+=== Шрифты X11
+
+Если порт устанавливает шрифты для X Window System, поместите их в [.filename]#LOCALBASE/lib/X11/fonts/local#.
+
+[[x11-fake-display]]
+=== Получение поддельного `DISPLAY` с помощью Xvfb
+
+Некоторые приложения требуют рабочего дисплея X11 для успешной компиляции. Это создаёт проблему для машин, работающих без монитора. При использовании этой переменной инфраструктура сборки запустит виртуальный X-сервер с буфером кадров. Рабочий `DISPLAY` затем передаётся в процесс сборки. См. crossref:uses[uses-display,`USES=display`] для возможных аргументов.
+
+[.programlisting]
+....
+USES=	display
+....
+
+
+[[desktop-entries]]
+=== Desktop Entries (пункты рабочего стола)
+
+Desktop entries (https://standards.freedesktop.org/desktop-entry-spec/latest/[стандарт Freedesktop]) предоставляют способ автоматической настройки функций рабочего стола при установке новой программы без вмешательства пользователя. Например, вновь установленные программы автоматически появляются в меню приложений совместимых сред рабочего стола. Desktop entries появились в среде GNOME, но теперь стали стандартом и также работают с KDE и Xfce. Эта автоматизация приносит реальную пользу пользователю, поэтому Desktop entries рекомендуются для приложений, которые могут использоваться в среде рабочего стола.
+
+[[desktop-entries-predefined]]
+==== Использование предопределенных файлов [.filename]#.desktop#
+
+Порты, включающие предопределённые файлы [.filename]#*.desktop#, должны добавлять эти файлы в [.filename]#pkg-plist# и устанавливать их в директорию [.filename]#$LOCALBASE/share/applications#. Для установки таких файлов полезен макрос crossref:makefiles[install-macros,`INSTALL_DATA`].
+
+[[updating-desktop-database]]
+==== Обновление базы данных рабочего стола
+
+Если порт имеет запись MimeType в файле [.filename]#portname.desktop#, базу данных рабочего стола необходимо обновить после установки и удаления. Для этого определите `USES`= desktop-file-utils.
+
+[[desktop-entries-macro]]
+==== Создание Desktop Entries с помощью `DESKTOP_ENTRIES`
+
+Desktop Entries могут быть легко созданы для приложений с использованием `DESKTOP_ENTRIES`. Файл с именем [.filename]#name.desktop# будет создан, установлен и автоматически добавлен в [.filename]#pkg-plist#. Синтаксис следующий:
+
+[.programlisting]
+....
+DESKTOP_ENTRIES=	"NAME" "COMMENT" "ICON" "COMMAND" "CATEGORY" StartupNotify
+....
+
+Список возможных категорий доступен на https://standards.freedesktop.org/menu-spec/latest/apa.html[сайте Freedesktop]. `StartupNotify` указывает, совместимо ли приложение с _уведомлениями о запуске_. Обычно это графический индикатор, например, часы, который появляется у указателя мыши, в меню или на панели, чтобы дать пользователю понять, что программа запускается. Программа, совместимая с уведомлениями о запуске, очищает индикатор после своего старта. Программы, не совместимые с уведомлениями о запуске, никогда не очищают индикатор (что может сбивать с толку и раздражать пользователя), и у них должен быть установлен параметр `StartupNotify` в значение `false`, чтобы индикатор вообще не отображался.
+
+Пример:
+
+[.programlisting]
+....
+DESKTOP_ENTRIES=	"ToME" "Roguelike game based on JRR Tolkien's work" \
+			"${DATADIR}/xtra/graf/tome-128.png" \
+			"tome -v -g" "Application;Game;RolePlaying;" \
+			false
+....
+
+`DESKTOP_ENTRIES` устанавливаются в директорию, указанную переменной `DESKTOPDIR`. По умолчанию `DESKTOPDIR` имеет значение [.filename]#${PREFIX}/share/applications#
+
+
+[[using-gnome]]
+== Использование GNOME
+
+[[using-gnome-introduction]]
+=== Введение
+
+Эта глава объясняет фреймворк GNOME, используемый в портах. Фреймворк можно условно разделить на базовые компоненты, компоненты рабочего стола GNOME и несколько специальных макросов, упрощающих работу сопровождающих портов.
+
+[[use-gnome]]
+=== Использование `USE_GNOME`
+
+Добавление этой переменной в порт позволяет использовать макросы и компоненты, определённые в [.filename]#bsd.gnome.mk#. Код в [.filename]#bsd.gnome.mk# добавляет необходимые зависимости для сборки, выполнения или библиотеки, а также обработку специальных файлов. Приложения GNOME в FreeBSD используют инфраструктуру `USE_GNOME`. Включите все необходимые компоненты в виде списка, разделённого пробелами. Компоненты `USE_GNOME` разделены на следующие виртуальные списки: основные компоненты, компоненты GNOME 3 и устаревшие компоненты. Если порту требуются только библиотеки GTK3, это кратчайший способ определить это:
+
+[.programlisting]
+....
+USE_GNOME=	gtk30
+....
+
+`USE_GNOME` компоненты автоматически добавляют необходимые им зависимости. Подробный список всех компонентов `USE_GNOME`, а также информацию о том, какие другие компоненты они подразумевают и их зависимости, можно найти в crossref:special[gnome-components, Компоненты GNOME].
+
+Вот пример [.filename]#Makefile# для порта GNOME, в котором используются многие методы, описанные в этом документе. Пожалуйста, используйте его в качестве руководства при создании новых портов.
+
+[.programlisting]
+....
+PORTNAME=	regexxer
+DISTVERSION=	0.10
+CATEGORIES=	devel textproc gnome
+MASTER_SITES=	GNOME
+
+MAINTAINER=	kwm@FreeBSD.org
+COMMENT=	Interactive tool for performing search and replace operations
+WWW=		http://regexxer.sourceforge.net/
+
+USES=		gettext gmake localbase:ldflags pathfix pkgconfig tar:xz
+GNU_CONFIGURE=	yes
+USE_GNOME=	gnomeprefix intlhack gtksourceviewmm3
+
+GLIB_SCHEMAS=	org.regexxer.gschema.xml
+
+.include <bsd.port.mk>
+....
+
+[NOTE]
+====
+Макрос `USE_GNOME` без аргументов не добавляет никаких зависимостей к порту. `USE_GNOME` не может быть установлен после [.filename]#bsd.port.pre.mk#.
+====
+
+[[using-gnome-variables]]
+=== Переменные
+
+Этот раздел объясняет, какие макросы доступны и как они используются. Как, например, в приведённом выше примере. В crossref:special[gnome-components, Компоненты GNOME] содержится более подробное объяснение. Для использования этих макросов необходимо установить `USE_GNOME`.
+
+`GLIB_SCHEMAS`::
+Список всех файлов схем glib, которые устанавливает порт. Макрос добавит файлы в plist порта и обработает регистрацию этих файлов при установке и удалении.
++
+Файлы схем glib написаны в XML и имеют расширение [.filename]#gschema.xml#. Они устанавливаются в директорию [.filename]#share/glib-2.0/schemas/#. Эти файлы схем содержат все настройки конфигурации приложений со значениями по умолчанию. Фактическая база данных, используемая приложениями, создаётся с помощью glib-compile-schema, которая запускается макросом `GLIB_SCHEMAS`.
++
+[.programlisting]
+....
+GLIB_SCHEMAS=foo.gschema.xml
+....
++
+[NOTE]
+====
+Не добавляйте схемы glib в файл [.filename]#pkg-plist#. Если они указаны в [.filename]#pkg-plist#, они не будут зарегистрированы, и приложения могут работать некорректно.
+====
+
+`GCONF_SCHEMAS`::
+Перечислите все файлы схем gconf. Макрос добавит файлы схем в plist порта и обеспечит их регистрацию при установке и удалении.
++
+GConf — это база данных на основе XML, которую используют практически все приложения GNOME для хранения своих настроек. Эти файлы устанавливаются в директорию [.filename]#etc/gconf/schemas#. Эта база данных определяется установленными файлами схем, которые используются для генерации ключевых файлов [.filename]#%gconf.xml#. Для каждого файла схемы, устанавливаемого портом, должна быть запись в [.filename]#Makefile#:
++
+[.programlisting]
+....
+GCONF_SCHEMAS=my_app.schemas my_app2.schemas my_app3.schemas
+....
++
+[NOTE]
+====
+Схемы Gconf перечислены в макросе `GCONF_SCHEMAS`, а не в файле [.filename]#pkg-plist#. Если они указаны в [.filename]#pkg-plist#, они не будут зарегистрированы, и приложения могут работать некорректно.
+====
+
+`INSTALLS_OMF`::
+Файлы Open Source Metadata Framework (OMF) часто используются приложениями GNOME 2. Эти файлы содержат информацию о файлах справки приложений и требуют специальной обработки с помощью ScrollKeeper/rarian. Для правильной регистрации файлов OMF при установке приложений GNOME из пакетов убедитесь, что файлы `omf` указаны в `pkg-plist` и что в [.filename]#Makefile# порта определено `INSTALLS_OMF`:
++
+[.programlisting]
+....
+INSTALLS_OMF=yes
+....
++
+При установке [.filename]#bsd.gnome.mk# автоматически сканирует [.filename]#pkg-plist# и добавляет соответствующие директивы `@exec` и `@unexec` для каждого файла [.filename]#.omf#, который необходимо отслеживать в базе данных регистрации OMF.
+
+[[gnome-components]]
+== Компоненты GNOME
+
+Для получения дополнительной помощи с портом GNOME, ознакомьтесь с некоторыми из link:https://ports.FreeBSD.org[существующих портов] в качестве примеров. На странице link:https://www.FreeBSD.org/gnome/[FreeBSD GNOME] указана контактная информация, если требуется дополнительная помощь. Компоненты разделены на используемые в настоящее время компоненты GNOME и устаревшие компоненты. Если компонент поддерживает аргументы, они перечислены в скобках в описании. Первый аргумент является значением по умолчанию. "Both" указывается, если компонент по умолчанию добавляется как в зависимости для сборки, так и для выполнения.
+
+[[gnome-components-list]]
+.Компоненты GNOME
+[cols="1,1,1", options="header"]
+|===
+| Компонент
+| Связанная программа
+| Описание
+
+|`atk`
+|accessibility/atk
+|Инструментарий доступности (ATK)
+
+|`atkmm`
+|accessibility/atkmm
+|C++ интерфейс для atk
+
+|`cairo`
+|graphics/cairo
+|Векторная графическая библиотека с поддержкой вывода на различные устройства
+
+|`cairomm`
+|graphics/cairomm
+|C++ интерфейс для cairo
+
+|`dconf`
+|devel/dconf
+|Система базы данных конфигурации (both, build, run)
+
+|`evolutiondataserver3`
+|databases/evolution-data-server
+|Бэкенды данных для интегрированного почтового клиента/PIM Evolution
+
+|`gdkpixbuf2`
+|graphics/gdk-pixbuf2
+|Графическая библиотека для GTK+
+
+|`glib20`
+|devel/glib20
+|Основная библиотека GNOME `glib20`
+
+|`glibmm`
+|devel/glibmm
+|C++ интерфейс для glib20
+
+|`gnomecontrolcenter3`
+|sysutils/gnome-control-center
+|Центр управления GNOME 3
+
+|`gnomedesktop3`
+|x11/gnome-desktop
+|Библиотека пользовательского интерфейса рабочего стола GNOME 3
+
+|`gsound`
+|audio/gsound
+|Библиотека GObject для воспроизведения системных звуков (both, build, run)
+
+|`gtk-update-icon-cache`
+|graphics/gtk-update-icon-cache
+|Утилита `gtk-update-icon-cache` из набора инструментов `Gtk+`
+
+|`gtk20`
+|x11-toolkits/gtk20
+|Набор инструментов Gtk+ 2
+
+|`gtk30`
+|x11-toolkits/gtk30
+|Набор инструментов Gtk+ 3
+
+|`gtkmm20`
+|x11-toolkits/gtkmm20
+|C++ интерфейс 2.0 для инструментария gtk20
+
+|`gtkmm24`
+|x11-toolkits/gtkmm24
+|C++ интерфейс 2.4 для инструментария gtk20
+
+|`gtkmm30`
+|x11-toolkits/gtkmm30
+|C++ интерфейс 3.0 для набора инструментов gtk30
+
+|`gtksourceview2`
+|x11-toolkits/gtksourceview2
+|Виджет, добавляющий подсветку синтаксиса в GtkTextView
+
+|`gtksourceview3`
+|x11-toolkits/gtksourceview3
+|Текстовая виджет, добавляющая подсветку синтаксиса к виджету GtkTextView
+
+|`gtksourceviewmm3`
+|x11-toolkits/gtksourceviewmm3
+|C++ интерфейс для библиотеки gtksourceview3
+
+|`gvfs`
+|devel/gvfs
+|Виртуальная файловая система GNOME
+
+|`intltool`
+|textproc/intltool
+|Инструмент для интернационализации (см. также intlhack)
+
+|`introspection`
+|devel/gobject-introspection
+|Базовые привязки (биндинги) интроспекции и инструменты для генерации привязок интроспекции. В большинстве случаев достаточно `:build`, `:both`/`:run` нужны только для приложений, использующих привязки интроспекции. (both, build, run)
+
+|`libgda5`
+|databases/libgda5
+|Обеспечивает единообразный доступ к различным типам источников данных
+
+|`libgda5-ui`
+|databases/libgda5-ui
+|Библиотека пользовательского интерфейса из библиотеки libgda5
+
+|`libgdamm5`
+|databases/libgdamm5
+|привязки C++ для библиотеки libgda5
+
+|`libgsf`
+|devel/libgsf
+|Расширяемая абстракция ввода-вывода для работы со структурированными форматами файлов
+
+|`librsvg2`
+|graphics/librsvg2
+|Библиотека для разбора и отображения SVG-файлов векторной графики
+
+|`libsigc++20`
+|devel/libsigc++20
+|Фреймворк обратных вызовов для C++
+
+|`libxml++26`
+|textproc/libxml++26
+|C++ привязки для библиотеки libxml2
+
+|`libxml2`
+|textproc/libxml2
+|Библиотека парсера XML (both, build, run)
+
+|`libxslt`
+|textproc/libxslt
+|Библиотека XSLT (сборка, выполнение)
+
+|`metacity`
+|x11-wm/metacity
+|Менеджер окон из GNOME
+
+|`nautilus3`
+|x11-fm/nautilus
+|GNOME файловый менеджер
+
+|`pango`
+|x11-toolkits/pango
+|Открытый фреймворк для разметки и отображения интернационализированного текста
+
+|`pangomm`
+|x11-toolkits/pangomm
+|C++ интерфейс для библиотеки pango
+
+|`py3gobject3`
+|devel/py3-gobject3
+|Python 3, интерфейс GObject 3.0
+
+|`pygobject3`
+|devel/py-gobject3
+|Python 2, интерфейс GObject 3.0
+
+|`vte3`
+|x11-toolkits/vte3
+|Виджет терминала с улучшенной поддержкой доступности и интернационализации (I18N)
+|===
+
+[[gnome-components-macro]]
+.Компоненты макросов GNOME
+[cols="1,1", options="header"]
+|===
+| Компонент
+| Описание
+
+|`gnomeprefix`
+|Предоставляет `configure` некоторые стандартные расположения.
+
+|`intlhack`
+|То же, что и `intltool`, но с патчами для гарантии использования [.filename]#share/locale/#. Используйте только в случае, когда одного `intltool` недостаточно.
+
+|`referencehack`
+|Этот макрос предназначен для помощи в разделении API или справочной документации на собственный порт.
+|===
+
+[[gnome-components-legacy]]
+.Компоненты GNOME Legacy
+[cols="1,1,1", options="header"]
+|===
+| Компонент
+| Связанная программа
+| Описание
+
+|`atspi`
+|accessibility/at-spi
+|Интерфейс поставщика услуг вспомогательных технологий (AT-SPI)
+
+|`esound`
+|audio/esound
+|Пакет звука Enlightenment
+
+|`gal2`
+|x11-toolkits/gal2
+|Коллекция виджетов, взятых из GNOME 2 gnumeric
+
+|`gconf2`
+|devel/gconf2
+|Система базы данных конфигурации для GNOME 2
+
+|`gconfmm26`
+|devel/gconfmm26
+|C++ привязки C++ для gconf2
+
+|`gdkpixbuf`
+|graphics/gdk-pixbuf
+|Графическая библиотека для GTK+
+
+|`glib12`
+|devel/glib12
+|Библиотека ядра glib 1.2
+
+|`gnomedocutils`
+|textproc/gnome-doc-utils
+|Утилиты документации GNOME
+
+|`gnomemimedata`
+|misc/gnome-mime-data
+|База данных MIME и приложений для GNOME 2
+
+|`gnomesharp20`
+|x11-toolkits/gnome-sharp20
+|Интерфейсы GNOME 2 для среды выполнения .NET
+
+|`gnomespeech`
+|accessibility/gnome-speech
+|GNOME 2 API преобразования текста в речь
+
+|`gnomevfs2`
+|devel/gnome-vfs
+|Виртуальная файловая система GNOME 2
+
+|`gtk12`
+|x11-toolkits/gtk12
+|Набор инструментов Gtk+ 1.2
+
+|`gtkhtml3`
+|www/gtkhtml3
+|Облегченный движок для отображения/печати/редактирования HTML
+
+|`gtkhtml4`
+|www/gtkhtml4
+|Облегченный движок для отображения/печати/редактирования HTML
+
+|`gtksharp20`
+|x11-toolkits/gtk-sharp20
+|Интерфейсы GTK+ и GNOME 2 для среды выполнения .NET
+
+|`gtksourceview`
+|x11-toolkits/gtksourceview
+|Виджет, добавляющий подсветку синтаксиса в GtkTextView
+
+|`libartgpl2`
+|graphics/libart_lgpl
+|Библиотека для высокопроизводительной 2D графики
+
+|`libbonobo`
+|devel/libbonobo
+|Система компонентов и составных документов для GNOME 2
+
+|`libbonoboui`
+|x11-toolkits/libbonoboui
+|Интерфейс для libbonobo в GNOME 2
+
+|`libgda4`
+|databases/libgda4
+|Обеспечивает единообразный доступ к различным типам источников данных
+
+|`libglade2`
+|devel/libglade2
+|Библиотека glade для GNOME 2
+
+|`libgnome`
+|x11/libgnome
+|Библиотеки для GNOME 2, GNU окружения рабочего стола
+
+|`libgnomecanvas`
+|graphics/libgnomecanvas
+|Графическая библиотека для GNOME 2
+
+|`libgnomekbd`
+|x11/libgnomekbd
+|Динамическая библиотека клавиатуры GNOME 2
+
+|`libgnomeprint`
+|print/libgnomeprint
+|Библиотека поддержки печати Gnome 2
+
+|`libgnomeprintui`
+|x11-toolkits/libgnomeprintui
+|Библиотека поддержки печати Gnome 2
+
+|`libgnomeui`
+|x11-toolkits/libgnomeui
+|Библиотеки для графического интерфейса GNOME 2, среды рабочего стола GNU
+
+|`libgtkhtml`
+|www/libgtkhtml
+|Облегченный движок для отображения/печати/редактирования HTML
+
+|`libgtksourceviewmm`
+|x11-toolkits/libgtksourceviewmm
+|C++ интерфейс GtkSourceView
+
+|`libidl`
+|devel/libIDL
+|Библиотека для создания деревьев файлов CORBA IDL
+
+|`libsigc++12`
+|devel/libsigc++12
+|Фреймворк обратных вызовов для C++
+
+|`libwnck`
+|x11-toolkits/libwnck
+|Библиотека, используемая для написания пейджеров и списков задач
+
+|`libwnck3`
+|x11-toolkits/libwnck3
+|Библиотека, используемая для написания пейджеров и списков задач
+
+|`orbit2`
+|devel/ORBit2
+|Высокопроизводительный CORBA ORB с поддержкой языка C
+
+|`pygnome2`
+|x11-toolkits/py-gnome2
+|Интерфейс Python для GNOME 2
+
+|`pygobject`
+|devel/py-gobject
+|Python 2, интерфейс GObject 2.0
+
+|`pygtk2`
+|x11-toolkits/py-gtk2
+|Набор интерфейсов Python для GTK+
+
+|`pygtksourceview`
+|x11-toolkits/py-gtksourceview
+|Интерфейс Python для GtkSourceView 2
+
+|`vte`
+|x11-toolkits/vte
+|Виджет терминала с улучшенной поддержкой доступности и интернационализации (I18N)
+|===
+
+[[gnome-components-deprecated]]
+.Устаревшие компоненты: не использовать
+[cols="1,1", options="header"]
+|===
+| Компонент
+| Описание
+
+|`pangox-compat`
+|pangox-compat устарел и был отделён от пакета pango.
+|===
+
+[[using-qt]]
+== Использование Qt
+
+[NOTE]
+====
+Для портов, которые являются частью самого Qt, см. crossref:uses[uses-qt-dist,`qt-dist`].
+====
+
+[[qt-common]]
+=== Порты, требующие Qt
+
+Коллекция портов поддерживает Qt 5 и Qt 6 с помощью `USES+=qt:5` и `USES+=qt:6` соответственно. Установите `USE_QT` в список необходимых компонентов Qt (libraries, tools, plugins - библиотеки, инструменты, плагины).
+
+Фреймворк Qt экспортирует ряд переменных, которые могут использоваться портами, некоторые из них перечислены ниже:
+
+[[using-qt-variables]]
+.Переменные, предоставляемые портам, использующим Qt
+[cols="1,1", frame="none"]
+|===
+|`QMAKE`
+|Полный путь к исполняемому файлу `qmake`.
+
+|`LRELEASE`
+|Полный путь к утилите `lrelease`.
+
+|`MOC`
+|Полный путь к `moc`.
+
+|`RCC`
+|Полный путь к `rcc`.
+
+|`UIC`
+|Полный путь к `uic`.
+
+|`QT_INCDIR`
+|Каталог включаемых файлов Qt.
+
+|`QT_LIBDIR`
+|Путь к библиотекам Qt.
+
+|`QT_PLUGINDIR`
+|Путь к плагинам Qt.
+|===
+
+[[qt-components]]
+=== Выбор компонентов
+
+Отдельные зависимости инструментов и библиотек Qt должны быть указаны в `USE_QT`. Каждый компонент может иметь суффикс `_build` или `_run`, указывающий, требуется ли компонент во время сборки или выполнения. Если суффикс отсутствует, компонент будет требоваться как во время сборки, так и во время выполнения. Обычно компоненты библиотек указываются без суффикса, компоненты инструментов чаще всего указываются с суффиксом `_build`, а компоненты плагинов — с суффиксом `_run`. Наиболее часто используемые компоненты перечислены ниже (все доступные компоненты перечислены в `_USE_QT_ALL`, которая формируется из `_USE_QT_COMMON` и `_USE_QT[56]_ONLY` в [.filename]#/usr/ports/Mk/Uses/qt.mk#):
+
+[[using-qt-library-list]]
+.Доступные компоненты библиотеки Qt
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`3d`
+|Модуль Qt3D
+
+|`5compat`
+|Модуль совместимости Qt 5 для Qt 6
+
+|`assistant`
+|Браузер документации Qt 5
+
+|`base`
+|Модуль Qt 6 base
+
+|`canvas3d`
+|Модуль Qt canvas3d
+
+|`charts`
+|Модуль Qt 5 charts
+
+|`concurrent`
+|Модуль многопоточности Qt
+
+|`connectivity`
+|Модуль Qt для подключения (Bluetooth/NFC)
+
+|`core`
+|Ядро Qt, неграфический модуль
+
+|`datavis3d`
+|Модуль визуализации 3D данных Qt 5
+
+|`dbus`
+|Модуль межпроцессного взаимодействия Qt D-Bus
+
+|`declarative`
+|Декларативный фреймворк Qt для динамических пользовательских интерфейсов
+
+|`designer`
+|Интерфейсный конструктор Qt 5 для графического пользовательского интерфейса
+
+|`diag`
+|Инструмент для сбора диагностической информации о Qt и его окружении
+
+|`doc`
+|Документация Qt 5
+
+|`examples`
+|Исходный код примеров Qt 5
+
+|`gamepad`
+|Модуль Qt 5 Gamepad
+
+|`graphicaleffects`
+|Графические эффекты Qt Quick
+
+|`gui`
+|Модуль графического интерфейса Qt
+
+|`help`
+|Модуль интеграции справки Qt в режиме онлайн
+
+|`l10n`
+|Локализованные сообщения Qt
+
+|`languageserver`
+|Реализация протокола Language Server Protocol в Qt 6
+
+|`linguist`
+|Инструмент перевода Qt 5
+
+|`location`
+|Модуль Qt Location
+
+|`lottie`
+|Qt 6 QML API для отрисовки графики и анимаций
+
+|`multimedia`
+|Модуль поддержки аудио, видео, радио и камеры Qt
+
+|`network`
+|Сетевой модуль Qt
+
+|`networkauth`
+|Модуль сетевой аутентификации Qt
+
+|`opengl`
+|Модуль поддержки OpenGL, совместимый с Qt 5
+
+|`paths`
+|Клиент командной строки для QStandardPaths
+
+|`phonon4`
+|Мультимедийный фреймворк KDE
+
+|`pixeltool`
+|Увеличитель экрана Qt 5
+
+|`plugininfo`
+|Дампер метаданных плагинов Qt 5
+
+|`positioning`
+|Qt 6 API позиционирования из источников, таких как спутники, Wi-Fi или текстовые файлы.
+
+|`printsupport`
+|Модуль поддержки печати Qt
+
+|`qdbus`
+|Интерфейс командной строки Qt для D-Bus
+
+|`qdbusviewer`
+|Графический интерфейс Qt 5 для D-Bus
+
+|`qdoc`
+|Генератор документации Qt
+
+|`qdoc-data`
+|Файлы конфигурации QDoc
+
+|`qev`
+|Инструмент для интроспекции событий Qt QWidget
+
+|`qmake`
+|Генератор Makefile Qt
+
+|`quickcontrols`
+|Набор элементов управления для создания полных интерфейсов в Qt Quick
+
+|`quickcontrols2`
+|Набор элементов управления для создания полных интерфейсов в Qt Quick
+
+|`remoteobjects`
+|Модуль Qt 5 SXCML
+
+|`script`
+|Совместимый с Qt 4 модуль для написания сценариев
+
+|`scripttools`
+|Дополнительные компоненты Qt Script
+
+|`scxml`
+|Модуль Qt 5 SXCML
+
+|`sensors`
+|Модуль Qt sensors
+
+|`serialbus`
+|Функции Qt для доступа к промышленным шинным системам
+
+|`serialport`
+|Функции Qt для доступа к последовательным портам
+
+|`shadertools`
+|Инструменты Qt 6 для кроссплатформенного конвейера шейдеров Qt
+
+|`speech`
+|Доступность в Qt5
+
+|`sql`
+|Модуль интеграции с базой данных Qt SQL
+
+|`sql-ibase`
+|Плагин Qt баз данных InterBase/Firebird
+
+|`sql-mysql`
+|Плагин Qt базы данных MySQL
+
+|`sql-odbc`
+|Плагин Qt ODBC
+
+|`sql-pgsql`
+|Плагин Qt базы данных PostgreSQL
+
+|`sql-sqlite2`
+|Плагин Qt базы данных SQLite 2
+
+|`sql-sqlite3`
+|Плагин Qt базы данных SQLite 3
+
+|`sql-tds`
+|Плагин Qt для подключение к базам данных по протоколу TDS
+
+|`svg`
+|Модуль поддержки SVG в Qt
+
+|`testlib`
+|Модуль тестирования Qt
+
+|`tools`
+|Различные инструменты Qt 6
+
+|`translations`
+|Модуль перевода Qt 6
+
+|`uiplugin`
+|Интерфейс плагина пользовательского виджета Qt для Qt Designer
+
+|`uitools`
+|Модуль поддержки форм пользовательского интерфейса Qt Designer
+
+|`virtualkeyboard`
+|Модуль виртуальной клавиатуры Qt 5
+
+|`wayland`
+|Оболочка Qt 5 для Wayland
+
+|`webchannel`
+|Библиотека Qt 5 для интеграции C++/QML с клиентами на HTML/js
+
+|`webengine`
+|Библиотека Qt 5 для отображения веб-содержимого
+
+|`webkit`
+|QtWebKit с более современной кодовой базой WebKit
+
+|`websockets`
+|Реализация протокола WebSocket на Qt
+
+|`websockets-qml`
+|Реализация протокола WebSocket на Qt (привязки QML)
+
+|`webview`
+|Компонент Qt для отображения веб-содержимого
+
+|`widgets`
+|Модуль виджетов Qt C++
+
+|`x11extras`
+|Платформо-специфичные возможности Qt для систем на основе X11
+
+|`xml`
+|Реализации SAX и DOM в Qt
+
+|`xmlpatterns`
+|Поддержка Qt для XPath, XQuery, XSLT и XML Schema
+|===
+
+Чтобы определить библиотеки, от которых зависит приложение, выполните `ldd` для основного исполняемого файла после успешной компиляции.
+
+[[using-qt-tools-list]]
+.Доступные компоненты инструментов Qt
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`buildtools`
+|инструменты сборки (`moc`, `rcc`), необходимые практически для любого приложения Qt.
+
+|`linguisttools`
+|инструменты локализации: `lrelease`, `lupdate`
+
+|`qmake`
+|Генератор Makefile/утилита сборки
+|===
+
+[[using-qt-plugins-list]]
+.Доступные компоненты плагинов Qt
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`imageformats`
+|плагины для графических форматов TGA, TIFF и MNG
+|===
+
+[[qt5-components-example]]
+.Выбор компонентов Qt 5
+[example]
+====
+В этом примере портированное приложение использует библиотеку графического интерфейса Qt 5, основную библиотеку Qt 5, все инструменты генерации кода Qt 5 и генератор Makefile Qt 5. Поскольку библиотека `gui` подразумевает зависимость от основной библиотеки, `core` не нужно указывать. Инструменты генерации кода Qt 5 `moc`, `uic` и `rcc`, а также генератор Makefile `qmake` требуются только во время сборки, поэтому они указаны с суффиксом `_build`:
+
+[.programlisting]
+....
+USES=	qt:5
+USE_QT=	gui buildtools_build qmake_build
+....
+
+====
+
+[[using-qmake]]
+=== Использование `qmake`
+
+Если приложение предоставляет файл проекта qmake ([.filename]#*.pro#), определите `USES= qmake` вместе с `USE_QT`. `USES= qmake` уже подразумевает зависимость сборки от qmake, поэтому компонент qmake может быть опущен в `USE_QT`. Подобно crossref:special[using-cmake,CMake], qmake поддерживает сборку вне исходного дерева, которую можно включить, указав аргумент `outsource` (см. crossref:special[using-qmake-example,пример `USES= qmake`]). Также см. crossref:special[using-qmake-arguments,Возможные аргументы для `USES qmake`].
+
+[[using-qmake-arguments]]
+.Возможные аргументы для `USES= qmake`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Описание
+
+|`no_configure`
+|Не добавлять цель configure. Это подразумевается при `HAS_CONFIGURE=yes` и `GNU_CONFIGURE=yes`. Это требуется, когда сборке нужна только настройка окружения из `USES= qmake`, но в остальном она запускает `qmake` самостоятельно.
+
+|`no_env`
+|Подавить модификацию окружения configure и make. Это требуется только когда `qmake` используется для настройки программного обеспечения и сборка не понимает окружение, установленное `USES= qmake`.
+
+|`norecursive`
+|Не передавать аргумент `-recursive` в `qmake`.
+
+|`outsource`
+|Выполнить сборку вне исходного кода.
+|===
+
+[[using-qmake-variables]]
+.Переменные для портов, использующих `qmake`
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Описание
+
+|`QMAKE_ARGS`
+|Специфичные для порта флаги qmake, передаваемые в бинарный файл `qmake`.
+
+|`QMAKE_ENV`
+|Переменные окружения, которые должны быть установлены для бинарного файла `qmake`. По умолчанию используется `${CONFIGURE_ENV}`.
+
+|`QMAKE_SOURCE_PATH`
+|Путь к файлам проекта qmake ([.filename]#.pro#). По умолчанию используется `${WRKSRC}`, если запрошена сборка вне исходного кода, в противном случае оставляется пустым.
+|===
+
+При использовании `USES= qmake` применяются следующие настройки:
+
+[.programlisting]
+....
+CONFIGURE_ARGS+=	--with-qt-includes=${QT_INCDIR} \
+			--with-qt-libraries=${QT_LIBDIR} \
+			--with-extra-libs=${LOCALBASE}/lib \
+			--with-extra-includes=${LOCALBASE}/include
+
+CONFIGURE_ENV+=	QTDIR="${QT_PREFIX}" QMAKE="${QMAKE}" \
+		MOC="${MOC}" RCC="${RCC}" UIC="${UIC}" \
+		QMAKESPEC="${QMAKESPEC}"
+
+PLIST_SUB+=	QT_INCDIR=${QT_INCDIR_REL} \
+		QT_LIBDIR=${QT_LIBDIR_REL} \
+		QT_PLUGINDIR=${QT_PLUGINDIR_REL}
+....
+
+Некоторые скрипты configure не поддерживают указанные выше аргументы. Чтобы отключить изменение `CONFIGURE_ENV` и `CONFIGURE_ARGS`, установите `USES= qmake:no_env`.
+
+[[using-qmake-example]]
+.Пример `USES= qmake`
+[example]
+====
+Этот фрагмент демонстрирует использование qmake для порта Qt 5:
+
+[.programlisting]
+....
+USES=	qmake:outsource qt:5
+USE_QT=	buildtools_build
+....
+
+====
+
+Приложения Qt часто разрабатываются как кроссплатформенные, и зачастую X11/Unix — не та платформа, на которой они создаются. Это, в свою очередь, приводит к определённым недоработкам, таким как:
+
+* _Отсутствуют дополнительные пути для заголовочных файлов._ Многие приложения поддерживают значки в системном трее, но не учитывают пути для заголовочных файлов и/или библиотек в каталогах X11. Чтобы добавить каталоги в пути поиска заголовочных файлов и библиотек для `qmake` через командную строку, используйте:
++
+[.programlisting]
+....
+QMAKE_ARGS+=	INCLUDEPATH+=${LOCALBASE}/include \
+		LIBS+=-L${LOCALBASE}/lib
+....
+
+* _Некорректные пути установки._ Иногда данные, такие как иконки или файлы .desktop, по умолчанию устанавливаются в каталоги, которые не сканируются приложениями, совместимыми с XDG. Например, package:editors/texmaker[] — посмотрите на файл [.filename]#patch-texmaker.pro# в директории [.filename]#files# этого порта, чтобы увидеть шаблон исправления этой проблемы напрямую в проектом файле `qmake`.
+
+[[using-kde]]
+== Использование KDE
+
+[[kde5-variables]]
+=== Определения переменных KDE
+
+Если приложение зависит от KDE, установите `USES+=kde:5` и `USE_KDE` в список необходимых компонентов. Суффиксы `_build` и `_run` можно использовать для принудительного указания типа зависимости компонентов (например, `baseapps_run`). Если суффикс не задан, будет использован тип зависимости по умолчанию. Чтобы принудительно задать оба типа, добавьте компонент дважды с обоими суффиксами (например, `ecm_build ecm_run`). Доступные компоненты перечислены ниже (актуальный список компонентов также приведён в [.filename]#/usr/ports/Mk/Uses/kde.mk#):
+
+[[using-kde-components]]
+.Доступные компоненты KDE
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`activities`
+|Среда выполнения и библиотека KF5 для организации работы в отдельных автивностях
+
+|`activities-stats`
+|KF5 статистика для активностей
+
+|`activitymanagerd`
+|Системный сервис для управления активностью пользователей, отслеживания шаблонов использования
+
+|`akonadi`
+|Хранилище данных для KDE-Pim
+
+|`akonadicalendar`
+|Интеграция Akonadi с Календарем
+
+|`akonadiconsole`
+|Консоль управления и отладки Akonadi
+
+|`akonadicontacts`
+|Библиотеки и демоны для реализации управления контактами в Akonadi
+
+|`akonadiimportwizard`
+|Импорт данных из других почтовых клиентов в KMail
+
+|`akonadimime`
+|Библиотеки и демоны для реализации базовой обработки электронной почты
+
+|`akonadinotes`
+|Библиотека KDE для доступа к хранилищам почты в формате MBox
+
+|`akonadisearch`
+|Библиотеки и демоны для реализации поиска в Akonadi
+
+|`akregator`
+|Читатель лент от KDE
+
+|`alarmcalendar`
+|KDE API для будильников KAlarm
+
+|`apidox`
+|Документация API KF5
+
+|`archive`
+|Библиотека KF5, предоставляющая классы для работы с форматами архивов
+
+|`attica`
+|Библиотека API Open Collaboration Services, версия для KDE5
+
+|`attica5`
+|Библиотека API Open Collaboration Services, версия для KDE5
+
+|`auth`
+|Абстракция KF5 для системной политики и функций аутентификации
+
+|`baloo`
+|KF5 Фреймворк для поиска и управления пользовательскими метаданными
+
+|`baloo-widgets`
+|Библиотека BalooWidgets
+
+|`baloo5`
+|KF5 Фреймворк для поиска и управления пользовательскими метаданными
+
+|`blog`
+|KDE API для доступа к веб-логам
+
+|`bookmarks`
+|Библиотека KF5 для закладок и формата XBEL
+
+|`breeze`
+|Plasma5 artwork, стили и ресурсы для визуального стиля Breeze
+
+|`breeze-gtk`
+|Plasma5 Breeze визуальный стиль для Gtk
+
+|`breeze-icons`
+|Тема значков Breeze для KDE
+
+|`calendarcore`
+|Библиотека доступа к календарю KDE
+
+|`calendarsupport`
+|Библиотеки поддержки календарей для KDEPim
+
+|`calendarutils`
+|Утилита KDE и пользовательские функции интерфейса для доступа к календарю
+
+|`codecs`
+|Библиотека KF5 для работы со строками
+
+|`completion`
+|KF5 вспомогательные средства и виджеты автодополнения текста
+
+|`config`
+|Виджеты KF5 для диалогов настройки
+
+|`configwidgets`
+|Виджеты KF5 для диалогов настройки
+
+|`contacts`
+|KDE API для управления контактной информацией
+
+|`coreaddons`
+|KF5 аддоны для QtCore
+
+|`crash`
+|Библиотека KF5 для обработки анализа сбоев и отчётов об ошибках в приложениях
+
+|`dbusaddons`
+|KF5 дополнения к QtDBus
+
+|`decoration`
+|Библиотека Plasma5 для создания оформления окон
+
+|`designerplugin`
+|Интеграция KF5 виджетов Frameworks в Qt Designer/Creator
+
+|`discover`
+|Инструменты управления пакетами Plasma5
+
+|`dnssd`
+|Абстракция KF5 для системных функций DNSSD
+
+|`doctools`
+|Генерация документации KF5 из docbook
+
+|`drkonqi`
+|Обработчик сбоев Plasma5
+
+|`ecm`
+|Дополнительные модули и скрипты для CMake
+
+|`emoticons`
+|Библиотека KF5 для преобразования эмотиконов
+
+|`eventviews`
+|Библиотеки просмотра событий для KDEPim
+
+|`filemetadata`
+|Библиотека KF5 для извлечения метаданных файлов
+
+|`frameworkintegration`
+|Плагины рабочего пространства KF5 и интеграции фреймворков
+
+|`gapi`
+|Библиотека на основе KDE для доступа к сервисам Google
+
+|`globalaccel`
+|Библиотека KF5 для добавления поддержки глобальных сочетаний клавиш рабочего пространства
+
+|`grantlee-editor`
+|Редактор тем Grantlee
+
+|`grantleetheme`
+|KDE PIM grantleetheme
+
+|`gravatar`
+|Библиотека для поддержки gravatar
+
+|`guiaddons`
+|KF5 аддоны для QtGui
+
+|`holidays`
+|Библиотека KDE для календарных праздников
+
+|`hotkeys`
+|Библиотека Plasma5 для горячих клавиш
+
+|`i18n`
+|KF5 — расширенная инфраструктура интернационализации
+
+|`iconthemes`
+|Библиотека KF5 для работы с иконками в приложениях
+
+|`identitymanagement`
+|KDE pim идентификации
+
+|`idletime`
+|Библиотека KF5 для мониторинга активности пользователей
+
+|`imap`
+|KDE API для поддержки IMAP
+
+|`incidenceeditor`
+|Инцидентные редакторские библиотеки для KDEPim
+
+|`infocenter`
+|Утилита Plasma5, предоставляющая системную информацию
+
+|`init`
+|Запускатель процессов KF5 для ускорения запуска приложений KDE
+
+|`itemmodels`
+|Модели KF5 для системы Qt Model/View
+
+|`itemviews`
+|KF5 виджеты-дополнения для Qt Model/View
+
+|`jobwidgets`
+|Виджеты KF5 для отслеживания экземпляра KJob
+
+|`js`
+|Библиотека KF5, предоставляющая интерпретатор ECMAScript
+
+|`jsembed`
+|Библиотека KF5 для привязки объектов JavaScript к QObjects
+
+|`kaddressbook`
+|Менеджер контактов KDE
+
+|`kalarm`
+|Планировщик персональных сигналов тревоги
+
+|`kalarm`
+|Планировщик персональных сигналов тревоги
+
+|`kate`
+|Базовая структура редактора для системы KDE
+
+|`kcmutils`
+|KF5 утилиты для работы с KCModules
+
+|`kde-cli-tools`
+|Неинтерактивные системные инструменты Plasma5
+
+|`kde-gtk-config`
+|Plasma5 конфигуратор GTK2 и GTK3
+
+|`kdeclarative`
+|Библиотека KF5, обеспечивающая интеграцию QML и KDE Frameworks
+
+|`kded`
+|KF5 расширяемый демон для предоставления системных сервисов
+
+|`kdelibs4support`
+|Помощник в портировании KF5 из KDELibs4
+
+|`kdepim-addons`
+|Дополнения KDE PIM
+
+|`kdepim-apps-libs`
+|Библиотеки KDE PIM, связанные с почтой
+
+|`kdepim-runtime5`
+|Инструменты и службы KDE PIM
+
+|`kdeplasma-addons`
+|Дополнения Plasma5 для улучшения работы с Plasma
+
+|`kdesu`
+|Интеграция KF5 с su для повышенных привилегий
+
+|`kdewebkit`
+|Библиотека KF5, обеспечивающая интеграцию QtWebKit
+
+|`kgamma5`
+|Настройки гаммы монитора Plasma5
+
+|`khtml`
+|Механизм рендеринга KF5 KTHML
+
+|`kimageformats`
+|Библиотека KF5, обеспечивающая поддержку дополнительных форматов изображений
+
+|`kio`
+|Абстракция ресурсов и сетевого доступа KF5
+
+|`kirigami2`
+|Набор компонентов на основе QtQuick
+
+|`kitinerary`
+|Модель данных и система извлечения информации о бронировании путешествий
+
+|`kmail`
+|Клиент электронной почты KDE
+
+|`kmail`
+|Клиент электронной почты KDE
+
+|`kmail-account-wizard`
+|Мастер настройки почтового аккаунта KDE
+
+|`kmenuedit`
+|Редактор меню Plasma5
+
+|`knotes`
+|Всплывающие примечания
+
+|`kontact`
+|KDE Персональный Органайзер
+
+|`kontact`
+|KDE Персональный Органайзер
+
+|`kontactinterface`
+|KDE glue для встраивания KParts в Kontact
+
+|`korganizer`
+|Программа для календаря и планирования
+
+|`kpimdav`
+|Реализация протокола DAV с KJobs
+
+|`kpkpass`
+|Библиотека для работы с файлами паролей Apple Wallet
+
+|`kross`
+|KF5 мультиязыковые прикладные скрипты
+
+|`kscreen`
+|Библиотека управления экраном Plasma5
+
+|`kscreenlocker`
+|Архитектура безопасной блокировки экрана Plasma5
+
+|`ksmtp`
+|Библиотека на основе задач для отправки электронной почты через SMTP-сервер
+
+|`ksshaskpass`
+|Plasma5 интерфейс для ssh-add
+
+|`ksysguard`
+|Утилита Plasma5 для отслеживания и управления запущенными процессами
+
+|`kwallet-pam`
+|Интеграция Plasma5 KWallet с PAM
+
+|`kwayland-integration`
+|Интеграционные плагины для рабочего стола на основе Wayland
+
+|`kwin`
+|Менеджер окон Plasma5
+
+|`kwrited`
+|Демон Plasma5, ожидающий сообщения wall и write
+
+|`ldap`
+|API доступа к LDAP для KDE
+
+|`libkcddb`
+|Библиотека KDE CDDB
+
+|`libkcompactdisc`
+|Библиотека KDE для взаимодействия с аудио-CD
+
+|`libkdcraw`
+|Интерфейс LibRaw для KDE
+
+|`libkdegames`
+|Библиотеки, используемые играми KDE
+
+|`libkdepim`
+|Библиотеки KDE PIM
+
+|`libkeduvocdocument`
+|Библиотека для чтения и записи файлов словарей
+
+|`libkexiv2`
+|Интерфейс библиотеки Exiv2 для KDE
+
+|`libkipi`
+|Интерфейс плагинов изображений KDE
+
+|`libkleo`
+|Менеджер сертификатов для KDE
+
+|`libksane`
+|Интерфейс библиотеки SANE для KDE
+
+|`libkscreen`
+|Библиотека управления экраном Plasma5
+
+|`libksieve`
+|Библиотеки Sieve для KDEPim
+
+|`libksysguard`
+|Библиотека Plasma5 для отслеживания и управления запущенными процессами
+
+|`mailcommon`
+|Общие библиотеки для KDEPim
+
+|`mailimporter`
+|Импорт файлов mbox в KMail
+
+|`mailtransport`
+|Библиотека KDE для управления транспортом почты
+
+|`marble`
+|Виртуальный глобус и мировой атлас для KDE
+
+|`mbox`
+|Библиотека KDE для доступа к хранилищам почты в формате MBox
+
+|`mbox-importer`
+|Импорт файлов mbox в KMail
+
+|`mediaplayer`
+|Интерфейс плагина KF5 для функций медиаплеера
+
+|`messagelib`
+|Библиотека для обработки сообщений
+
+|`milou`
+|Plasma5 Plasmoid для поиска
+
+|`mime`
+|Библиотека для обработки данных MIME
+
+|`newstuff`
+|Библиотека KF5 для загрузки ресурсов приложений из сети
+
+|`notifications`
+|Абстракция KF5 для системных уведомлений
+
+|`notifyconfig`
+|Система конфигурации KF5 для KNotify
+
+|`okular`
+|Универсальная программа для просмотра документов KDE
+
+|`oxygen`
+|Стиль Plasma5 Oxygen
+
+|`oxygen-icons5`
+|Тема иконок Oxygen для KDE
+
+|`package`
+|Библиотека KF5 для загрузки и установки пакетов
+
+|`parts`
+|KF5 система плагинов для работы с документами
+
+|`people`
+|Библиотека KF5, предоставляющая доступ к контактам
+
+|`pim-data-exporter`
+|Импорт и экспорт настроек KDE PIM
+
+|`pimcommon`
+|Общие библиотеки для KDEPim
+
+|`pimtextedit`
+|Библиотека KDE для утилит редактирования текста, специфичных для PIM
+
+|`plasma-browser-integration`
+|Компоненты Plasma5 для интеграции браузеров в рабочий стол
+
+|`plasma-desktop`
+|Plasma5 рабочий стол Plasma
+
+|`plasma-framework`
+|KF5 - среда выполнения пользовательского интерфейса на основе плагинов, используемая для создания пользовательских интерфейсов
+
+|`plasma-integration`
+|Плагины интеграции Qt Platform Theme для рабочего окружения Plasma
+
+|`plasma-pa`
+|Plasma5 Микшер звука Plasma Pulse
+
+|`plasma-sdk`
+|Приложения Plasma5, полезные для разработки Plasma
+
+|`plasma-workspace`
+|Plasma5 Рабочее пространство Plasma
+
+|`plasma-workspace-wallpapers`
+|Обои Plasma5
+
+|`plotting`
+|KF5 облегченный фреймворк для построения графиков
+
+|`polkit-kde-agent-1`
+|Демон Plasma5, предоставляющий интерфейс аутентификации polkit
+
+|`powerdevil`
+|Инструмент Plasma5 для управления настройками энергопотребления
+
+|`prison`
+|Интерфейс API для создания штрихкодов
+
+|`pty`
+|Абстракция pty KF5
+
+|`purpose`
+|Предлагает доступные действия для конкретной цели
+
+|`qqc2-desktop-style`
+|Стиль Qt QuickControl2 для KDE
+
+|`runner`
+|KF5 параллелизованная система запросов
+
+|`service`
+|KF5 расширенные плагины и интроспекция сервисов
+
+|`solid`
+|Интеграция и обнаружение оборудования KF5
+
+|`sonnet`
+|KF5 библиотека проверки орфографии на основе плагинов
+
+|`syndication`
+|Библиотека KDE для обработки RSS-лент
+
+|`syntaxhighlighting`
+|Движок подсветки синтаксиса KF5 для структурированного текста и кода
+
+|`systemsettings`
+|Настройки системы Plasma5
+
+|`texteditor`
+|KF5 продвинутый встраиваемый текстовый редактор
+
+|`textwidgets`
+|KF5 расширенные виджеты для редактирования текста
+
+|`threadweaver`
+|KF5 дополнения к QtDBus
+
+|`tnef`
+|KDE API для обработки данных TNEF
+
+|`unitconversion`
+|Библиотека KF5 для преобразования единиц измерения
+
+|`user-manager`
+|Пользовательский менеджер Plasma5
+
+|`wallet`
+|KF5 безопасный и унифицированный контейнер для паролей пользователей
+
+|`wayland`
+|Обёртка клиентской и серверной библиотек KF5 для библиотек Wayland
+
+|`widgetsaddons`
+|KF5 аддоны для QtWidgets
+
+|`windowsystem`
+|Библиотека KF5 для доступа к оконной системе
+
+|`xmlgui`
+|KF5 настраиваемые пользователем главные окна
+
+|`xmlrpcclient`
+|Взаимодействие KF5 с XMLRPC-сервисами
+|===
+
+[[kde5-components-example]]
+.Пример `USE_KDE`
+[example]
+====
+Это простой пример порта для KDE. `USES= cmake` указывает порту использовать CMake, инструмент конфигурации, широко применяемый в проектах KDE (см. crossref:special[using-cmake, Использование `cmake`] для подробного описания). `USE_KDE` добавляет зависимость от библиотек KDE. Необходимые компоненты KDE и другие зависимости можно определить через лог конфигурации. `USE_KDE` не подразумевает `USE_QT`. Если порту требуются некоторые компоненты Qt, укажите их в `USE_QT`.
+
+[.programlisting]
+....
+USES=		cmake kde:5 qt:5
+USE_KDE=	ecm
+USE_QT=		core buildtools_build qmake_build
+....
+
+====
+
+[[using-lxqt]]
+== Использование LXQt
+
+Приложения, зависящие от LXQt, должны устанавливать `USES+= lxqt` и задавать `USE_LXQT` списком необходимых компонентов из таблицы ниже
+
+[[using-lxqt-components]]
+.Доступные компоненты LXQt
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`buildtools`
+|Помощники для дополнительных модулей CMake
+
+|`libfmqt`
+|Привязки Libfm к Qt
+
+|`lxqt`
+|Ядро библиотеки LXQt
+
+|`qtxdg`
+|Реализация Qt спецификаций freedesktop.org XDG
+|===
+
+[[lxqt-components-example]]
+.Пример `USE_LXQT`
+[example]
+====
+Это простой пример, `USE_LXQT` добавляет зависимость от библиотек LXQt. Необходимые компоненты LXQt и другие зависимости можно определить из лога конфигурации.
+
+[.programlisting]
+....
+USES=	cmake lxqt qt:5 tar:xz
+USE_QT=		core dbus widgets buildtools_build qmake_build
+USE_LXQT=	buildtools libfmqt
+....
+
+====
+
+[[using-java]]
+== Использование Java
+
+[[java-variables]]
+=== Определения переменных
+
+Если порту требуется Java(TM) Development Kit (JDK(TM)) для сборки, запуска или даже извлечения distfile, определите `USE_JAVA`.
+
+В коллекции портов доступно несколько JDK от различных поставщиков и в нескольких версиях. Если порт должен использовать определённую версию, укажите её с помощью переменной `JAVA_VERSION`. Самая актуальная версия — package:java/openjdk18[], также доступны package:java/openjdk17[], package:java/openjdk16[], package:java/openjdk15[], package:java/openjdk14[], package:java/openjdk13[], package:java/openjdk12[], package:java/openjdk11[], package:java/openjdk8[] и package:java/openjdk7[].
+
+[[using-java-variables]]
+.Переменные, которые могут быть установлены портами, использующими Java
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Значение
+
+|`USE_JAVA`
+|Определите для остальных переменных, чтобы они имели какой-либо эффект.
+
+|`JAVA_VERSION`
+|Список подходящих версий Java для порта, разделённых пробелами.
+Необязательный символ `\+` позволяет указать диапазон версий (допустимые значения: `8[+] 11[\+] 17[+] 18[\+] 19[+] 20[\+] 21[+]`).
+
+|`JAVA_OS`
+|Список разделенных пробелами подходящих операционных систем портов JDK для порта (допустимые значения: `native linux`).
+
+|`JAVA_VENDOR`
+|Список подходящих поставщиков портов JDK для порта через пробел (допустимые значения: `openjdk oracle`).
+
+|`JAVA_BUILD`
+|Когда установлено, добавляет выбранный порт JDK в зависимости сборки.
+
+|`JAVA_RUN`
+|Когда установлено, добавляет выбранный порт JDK в зависимости времени выполнения.
+
+|`JAVA_EXTRACT`
+|Когда установлено, добавляет выбранный порт JDK в зависимости для извлечения.
+|===
+
+Ниже приведен список всех настроек, которые порт получит после установки `USE_JAVA`:
+
+[[using-java-variables2]]
+.Переменные, предоставляемые портам, использующим Java
+[cols="1,1", frame="none", options="header"]
+|===
+| Переменная
+| Значение
+
+|`JAVA_PORT`
+|Имя порта JDK (например, `java/openjdk6`).
+
+|`JAVA_PORT_VERSION`
+|Полная версия порта JDK (например, `1.6.0`). Требуются только первые две цифры номера версии, используйте `${JAVA_PORT_VERSION:C/^([0-9])\.([0-9])(.*)$/\1.\2/}`.
+
+|`JAVA_PORT_OS`
+|Операционная система, используемая портом JDK (например, `'native'`).
+
+|`JAVA_PORT_VENDOR`
+|Поставщик порта JDK (например, `'openjdk'`).
+
+|`JAVA_PORT_OS_DESCRIPTION`
+|Описание операционной системы, используемой портом JDK (например, `'Native'`).
+
+|`JAVA_PORT_VENDOR_DESCRIPTION`
+|Описание поставщика порта JDK (например, `'OpenJDK BSD Porting Team'`).
+
+|`JAVA_HOME`
+|Путь к каталогу установки JDK (например, [.filename]#'/usr/local/openjdk6'#).
+
+|`JAVAC`
+|Путь к используемому компилятору Java (например, [.filename]#'/usr/local/openjdk6/bin/javac'#).
+
+|`JAR`
+|Путь к инструменту `jar`, который следует использовать (например, [.filename]#'/usr/local/openjdk6/bin/jar'# или [.filename]#'/usr/local/bin/fastjar'#).
+
+|`APPLETVIEWER`
+|Путь к утилите `appletviewer` (например, [.filename]#'/usr/local/openjdk6/bin/appletviewer'#).
+
+|`JAVA`
+|Путь к исполняемому файлу `java`. Используется для запуска программ на Java (например, [.filename]#'/usr/local/openjdk6/bin/java'#).
+
+|`JAVADOC`
+|Путь к программе `javadoc`.
+
+|`JAVAH`
+|Путь к программе `javah`.
+
+|`JAVAP`
+|Путь к программе `javap`.
+
+|`JAVA_KEYTOOL`
+|Путь к утилите `keytool`.
+
+|`JAVA_N2A`
+|Путь к инструменту `native2ascii`.
+
+|`JAVA_POLICYTOOL`
+|Путь к программе `policytool`.
+
+|`JAVA_SERIALVER`
+|Путь к утилите `serialver`.
+
+|`RMIC`
+|Путь к генератору RMI-заглушек/скелетов, `rmic`.
+
+|`RMIREGISTRY`
+|Путь к программе реестра RMI, `rmiregistry`.
+
+|`RMID`
+|Путь к программе демона RMI `rmid`.
+
+|`JAVA_CLASSES`
+|Путь к архиву, содержащему файлы классов JDK, [.filename]#${JAVA_HOME}/jre/lib/rt.jar#.
+|===
+
+Используйте цель `java-debug` в make для получения информации для отладки порта. Она отобразит значения многих из перечисленных ранее переменных.
+
+Кроме того, определены следующие константы, чтобы все порты Java могли быть установлены единообразно:
+
+[[using-java-constants]]
+.Константы, определенные для портов, использующих Java
+[cols="1,1", frame="none", options="header"]
+|===
+| Константа
+| Значение
+
+|`JAVASHAREDIR`
+|Базовый каталог для всего, связанного с Java. По умолчанию: [.filename]#${PREFIX}/share/java#.
+
+|`JAVAJARDIR`
+|Каталог, в котором установлены JAR-файлы. По умолчанию: [.filename]#${JAVASHAREDIR}/classes#.
+
+|`JAVALIBDIR`
+|Каталог, в котором расположены JAR-файлы, установленные другими портами. По умолчанию: [.filename]#${LOCALBASE}/share/java/classes#.
+|===
+
+Связанные записи определены как в `PLIST_SUB` (документировано в crossref:plist[plist-sub,Изменение pkg-plist на основе переменных Make]), так и в `SUB_LIST`.
+
+[[java-building-with-ant]]
+=== Сборка с Ant
+
+Когда порт должен собираться с использованием Apache Ant, он должен определять `USE_ANT`. Таким образом, Ant считается командой sub-make. Если цель `do-build` не определена в порте, будет установлена цель по умолчанию, которая запускает Ant в соответствии с `MAKE_ENV`, `MAKE_ARGS` и `ALL_TARGET`. Это аналогично механизму `USES= gmake`, который документирован в crossref:special[building, Building Mechanisms].
+
+[[java-best-practices]]
+=== Лучшие практики
+
+При переносе библиотеки Java порт должен устанавливать JAR-файл(ы) в [.filename]#${JAVAJARDIR}#, а все остальное — в [.filename]#${JAVASHAREDIR}/${PORTNAME}# (за исключением документации, см. ниже). Чтобы уменьшить размер упаковочного файла, ссылайтесь на JAR-файл(ы) напрямую в [.filename]#Makefile#. Используйте следующую инструкцию (где [.filename]#myport.jar# — имя JAR-файла, устанавливаемого как часть порта):
+
+[.programlisting]
+....
+PLIST_FILES+=	${JAVAJARDIR}/myport.jar
+....
+
+При переносе Java-приложения порт обычно устанавливает все компоненты в единый каталог (включая зависимости в виде JAR-файлов). В этом отношении настоятельно рекомендуется использовать [.filename]#${JAVASHAREDIR}/${PORTNAME}#. Портеру предстоит решить, устанавливать ли дополнительные JAR-зависимости в этот каталог или использовать уже установленные (из [.filename]#${JAVAJARDIR}#).
+
+При переносе Java(TM)-приложения, которое требует сервера приложений, такого как package:www/tomcat7[], для запуска службы, вендор часто распространяет файл [.filename]#.war#. [.filename]#.war# — это веб-архив приложения (Web application ARchive), который извлекается при вызове приложением. Избегайте добавления [.filename]#.war# в [.filename]#pkg-plist#. Это не считается лучшей практикой. Сервер приложений развернет архив war, но не очистит его должным образом при удалении порта. Более предпочтительный способ работы с этим файлом — извлечь архив, затем установить файлы и, наконец, добавить эти файлы в [.filename]#pkg-plist#.
+
+[.programlisting]
+....
+TOMCATDIR=	${LOCALBASE}/apache-tomcat-7.0
+WEBAPPDIR=	myapplication
+
+post-extract:
+	@${MKDIR} ${WRKDIR}/${PORTDIRNAME}
+	@${TAR} xf ${WRKDIR}/myapplication.war -C ${WRKDIR}/${PORTDIRNAME}
+
+do-install:
+	cd ${WRKDIR} && \
+	${INSTALL} -d -o ${WWWOWN} -g ${WWWGRP} ${TOMCATDIR}/webapps/${PORTDIRNAME}
+	cd ${WRKDIR}/${PORTDIRNAME} && ${COPYTREE_SHARE} \* ${WEBAPPDIR}/${PORTDIRNAME}
+....
+
+Независимо от типа порта (библиотека или приложение), дополнительная документация устанавливается crossref:makefiles[install-documentation,в том же месте], что и для любого другого порта. Известно, что инструмент Javadoc создает разный набор файлов в зависимости от версии используемого JDK. Для портов, которые не требуют использования конкретной версии JDK, указание списка упаковки ([.filename]#pkg-plist#) становится сложной задачей. Это одна из причин, по которой разработчикам портов настоятельно рекомендуется использовать `PORTDOCS`. Более того, даже если набор файлов, генерируемых `javadoc`, можно предсказать, размер результирующего [.filename]#pkg-plist# говорит в пользу использования `PORTDOCS`.
+
+Значение по умолчанию для `DATADIR` — [.filename]#${PREFIX}/share/${PORTNAME}#. Рекомендуется переопределить `DATADIR` на [.filename]#${JAVASHAREDIR}/${PORTNAME}# для портов Java. Действительно, `DATADIR` автоматически добавляется в `PLIST_SUB` (документировано в crossref:plist[plist-sub,Изменение pkg-plist на основе переменных Make]), поэтому используйте `%%DATADIR%%` напрямую в [.filename]#pkg-plist#.
+
+Что касается выбора между сборкой портов Java из исходного кода или их непосредственной установкой из бинарного дистрибутива, на момент написания документации определённой политики не существует. Однако участники https://www.freebsd.org/java/[FreeBSD Java Project] рекомендуют сопровождающим портов по возможности собирать их из исходного кода, если это не представляет сложностей.
+
+Все функции, представленные в этом разделе, реализованы в [.filename]#bsd.java.mk#. Если порту требуется более сложная поддержка Java, сначала ознакомьтесь с https://cgit.FreeBSD.org/ports/tree/Mk/bsd.java.mk[историей изменений bsd.java.mk], так как документирование новых функций обычно занимает некоторое время. Затем, если отсутствующая поддержка будет полезна для многих других Java-портов, не стесняйтесь обсудить это на списке рассылки freebsd-java.
+
+Хотя существует категория `java` для PR, она относится к усилиям по портированию JDK в рамках проекта FreeBSD Java. Поэтому отправляйте порт Java в категорию `ports`, как и любой другой порт, если только проблема не связана либо с реализацией JDK, либо с [.filename]#bsd.java.mk#.
+
+Аналогично существует определённая политика в отношении `CATEGORIES` для портов Java, которая подробно описана в crossref:makefiles[makefile-categories,Категоризация].
+
+[[using-php]]
+== Веб-приложения, Apache и PHP
+
+[[using-apache]]
+=== Apache
+
+[[using-apache-variables]]
+.Переменные для портов, использующих Apache
+[cols="1,1", frame="none"]
+|===
+|`USE_APACHE`
+|Порт требует Apache. Возможные значения: `yes` (любая версия), `22`, `24`, `22-24`, `22+` и т.д. Версия APACHE по умолчанию — `22`. Подробнее см. в [.filename]#ports/Mk/bsd.apache.mk# и на https://wiki.freebsd.org/Apache/[wiki.freebsd.org/Apache/].
+
+|`APXS`
+|Полный путь к бинарному файлу `apxs`. Может быть переопределён в порте.
+
+|`HTTPD`
+|Полный путь к бинарному файлу `httpd`. Может быть переопределён в порте.
+
+|`APACHE_VERSION`
+|Версия установленной Apache (переменная только для чтения). Эта переменная доступна только после включения [.filename]#bsd.port.pre.mk#. Возможные значения: `22`, `24`.
+
+|`APACHEMODDIR`
+|Каталог для модулей Apache. Эта переменная автоматически раскрывается в [.filename]#pkg-plist#.
+
+|`APACHEINCLUDEDIR`
+|Каталог для заголовков Apache. Эта переменная автоматически раскрывается в [.filename]#pkg-plist#.
+
+|`APACHEETCDIR`
+|Каталог для файлов конфигурации Apache. Эта переменная автоматически раскрывается в [.filename]#pkg-plist#.
+|===
+
+[[using-apache-modules]]
+.Полезные переменные для переноса модулей Apache
+[cols="1,1", frame="none"]
+|===
+|`MODULENAME`
+|Имя модуля. Значение по умолчанию — `PORTNAME`. Пример: `mod_hello`
+
+|`SHORTMODNAME`
+|Короткое имя модуля. Автоматически определяется из `MODULENAME`, но может быть переопределено. Пример: `hello`
+
+|`AP_FAST_BUILD`
+|Используйте `apxs` для компиляции и установки модуля.
+
+|`AP_GENPLIST`
+|Также автоматически создаёт файл [.filename]#pkg-plist#.
+
+|`AP_INC`
+|Добавляет каталог в путь поиска заголовков во время компиляции.
+
+|`AP_LIB`
+|Добавляет каталог в путь поиска библиотек во время компиляции.
+
+|`AP_EXTRAS`
+|Дополнительные флаги для передачи в `apxs`.
+|===
+
+[[web-apps]]
+=== Веб-приложения
+
+Веб-приложения должны быть установлены в [.filename]#PREFIX/www/appname#. Этот путь доступен как в [.filename]#Makefile#, так и в [.filename]#pkg-plist# как `WWWDIR`, а путь относительно `PREFIX` доступен в [.filename]#Makefile# как `WWWDIR_REL`.
+
+Пользователь и группа процесса веб-сервера доступны как `WWWOWN` и `WWWGRP`, если необходимо изменить владельца некоторых файлов. Значения по умолчанию для обоих — `www`. Используйте `WWWOWN?= myuser` и `WWWGRP?= mygroup`, если порту требуются другие значения. Это позволяет пользователю легко их переопределить.
+
+[IMPORTANT]
+====
+Используйте `WWWOWN` и `WWWGRP` с осторожностью. Помните, что каждый файл, доступный для записи веб-серверу, представляет собой потенциальную угрозу безопасности.
+====
+
+Не зависьте от Apache, если веб-приложение явно не требует Apache. Учитывайте, что пользователи могут захотеть запускать веб-приложение на другом веб-сервере, кроме Apache.
+
+[[php-variables]]
+=== PHP
+
+Веб-приложения PHP объявляют свою зависимость от него с помощью `USES=php`. Подробнее см. в crossref:uses[uses-php,`php`].
+
+[[php-pear]]
+=== Модули PEAR
+
+Портирование модулей PEAR — это очень простой процесс.
+
+Добавьте `USES=pear` в [.filename]#Makefile# порта. Фреймворк установит соответствующие файлы в нужные места и автоматически сгенерирует plist во время установки.
+
+[[pear-makefile]]
+.Пример Makefile для PEAR Class
+[example]
+====
+[.programlisting]
+....
+PORTNAME=       Date
+DISTVERSION=	1.4.3
+CATEGORIES=	devel www pear
+
+MAINTAINER=	someone@example.org
+COMMENT=	PEAR Date and Time Zone Classes
+WWW=		https://pear.php.net/package/Date/
+
+USES=	pear
+
+.include <bsd.port.mk>
+....
+
+====
+
+[TIP]
+====
+Модули PEAR будут автоматически преобразованы в порт с флейвором с использованием crossref:flavors[flavors-auto-php,флейворов PHP].
+====
+
+[NOTE]
+====
+Если используется нестандартный `PEAR_CHANNEL`, зависимости для сборки и выполнения будут добавлены автоматически.
+====
+
+[IMPORTANT]
+====
+Модули PEAR не требуют определения `PKGNAMESUFFIX`, так как он автоматически заполняется с использованием `PEAR_PKGNAMEPREFIX`. Если порту необходимо добавить к `PKGNAMEPREFIX`, он также должен использовать `PEAR_PKGNAMEPREFIX`, чтобы отличать различные флейворы.
+====
+
+[[php-horde]]
+==== Модули Horde
+
+Также и перенос модулей Horde является простым процессом.
+
+Добавьте `USES=horde` в [.filename]#Makefile# порта. Фреймворк установит соответствующие файлы в нужные места и автоматически сгенерирует plist во время установки.
+
+Переменные `USE_HORDE_BUILD` и `USE_HORDE_RUN` могут использоваться для добавления зависимостей времени сборки и выполнения от других модулей Horde. Полный список доступных модулей можно найти в [.filename]#Mk/Uses/horde.mk#.
+
+[[horde-Makefile]]
+.Пример Makefile для модуля Horde
+[example]
+====
+[.programlisting]
+....
+PORTNAME=	Horde_Core
+DISTVERSION=	2.14.0
+CATEGORIES=	devel www pear
+
+MAINTAINER=	horde@FreeBSD.org
+COMMENT=	Horde Core Framework libraries
+WWW=		https://pear.horde.org/
+
+OPTIONS_DEFINE=	KOLAB SOCKETS
+KOLAB_DESC=	Enable Kolab server support
+SOCKETS_DESC=	Depend on sockets PHP extension
+
+USES=	horde
+USE_PHP=	session
+
+USE_HORDE_BUILD=	Horde_Role
+USE_HORDE_RUN=	Horde_Role Horde_History Horde_Pack \
+		Horde_Text_Filter Horde_View
+
+KOLAB_USE=	HORDE_RUN=Horde_Kolab_Server,Horde_Kolab_Session
+SOCKETS_USE=	PHP=sockets
+
+.include <bsd.port.mk>
+....
+
+====
+
+[TIP]
+====
+Поскольку модули Horde также являются модулями PEAR, они будут автоматически преобразованы с использованием crossref:flavors[flavors-auto-php,флейворов PHP].
+====
+
+[[using-python]]
+== Использование Python
+
+Коллекция портов поддерживает параллельную установку нескольких версий Python. Порты должны использовать правильный интерпретатор `python` в соответствии с настраиваемым пользователем параметром `PYTHON_VERSION`. Важнее всего заменить путь к исполняемому файлу `python` в скриптах на значение `PYTHON_CMD`.
+
+Порты, которые устанавливают файлы в `PYTHON_SITELIBDIR`, должны использовать префикс имени пакета `pyXY-`, чтобы их имя пакета включало версию Python, для которой они предназначены.
+
+[.programlisting]
+....
+PKGNAMEPREFIX=	${PYTHON_PKGNAMEPREFIX}
+....
+
+
+[[using-python-variables]]
+.Наиболее полезные переменные для портов, использующих Python
+[cols="1,1", frame="none"]
+|===
+|`USES=python`
+|Порту требуется Python. Минимально необходимая версия может быть указана с такими значениями, как `3.10+`. Диапазоны версий также можно указать, разделив две версии дефисом: `USES=python:3.8-3.9`. Обратите внимание, что `USES=python` _не_ включает Python 2.7, его нужно запрашивать явно с помощью `USES=python:2.7+`.
+
+|`USE_PYTHON=distutils`
+|Используйте Python distutils для настройки, компиляции и установки. Это требуется, когда порт поставляется с [.filename]#setup.py#. Это переопределяет цели `do-build` и `do-install`, а также может переопределить `do-configure`, если `GNU_CONFIGURE` не определён. Кроме того, подразумевается `USE_PYTHON=flavors`.
+
+|`USE_PYTHON=autoplist`
+|Создать список пакетов автоматически. Это также требует установки `USE_PYTHON=distutils`.
+
+|`USE_PYTHON=concurrent`
+|Порт будет использовать уникальный префикс, обычно `PYTHON_PKGNAMEPREFIX`, для определённых каталогов, таких как `EXAMPLESDIR` и `DOCSDIR`, а также добавлять суффикс — версию Python из `PYTHON_VER` — к устанавливаемым бинарным файлам и скриптам. Это позволяет устанавливать порты для разных версий Python одновременно, что в противном случае приводило бы к конфликту файлов.
+
+|`USE_PYTHON=flavors`
+|Порт не использует distutils, но по-прежнему поддерживает несколько версий Python. `FLAVORS` будет установлен в поддерживаемые версии Python. Дополнительную информацию см. в crossref:flavors[flavors-auto-python,`USES`=python и флейворы].
+
+|`USE_PYTHON=optsuffix`
+|Если текущая версия Python не является версией по умолчанию, порт получит `PKGNAMESUFFIX=${PYTHON_PKGNAMESUFFIX}`. Полезно только для флейворов.
+
+|`PYTHON_PKGNAMEPREFIX`
+|Используется как `PKGNAMEPREFIX` для различения пакетов разных версий Python. Пример: `py27-`
+
+|`PYTHON_SITELIBDIR`
+|Расположение дерева site-packages, которое содержит путь установки Python (обычно `LOCALBASE`). `PYTHON_SITELIBDIR` может быть очень полезно при установке модулей Python.
+
+|`PYTHONPREFIX_SITELIBDIR`
+|Вариант PREFIX-clean для PYTHON_SITELIBDIR. Всегда используйте `%%PYTHON_SITELIBDIR%%` в [.filename]#pkg-plist#, когда это возможно. Значение по умолчанию для `%%PYTHON_SITELIBDIR%%` — `lib/python%%PYTHON_VERSION%%/site-packages`
+
+|`PYTHON_CMD`
+|Интерпретатор командной строки Python, включая номер версии.
+|===
+
+[[using-python-variables-helpers]]
+.Помощники зависимостей модуля Python
+[cols="1,1", frame="none"]
+|===
+|`PYNUMERIC`
+|Строка зависимости для числового расширения.
+
+|`PYNUMPY`
+|Строка зависимости для нового числового расширения, numpy. (PYNUMERIC устарел у вендора).
+
+|`PYXML`
+|Строка зависимости для расширения XML (не требуется для Python 2.0 и выше, так как оно также входит в базовую поставку).
+
+|`PY_ENUM34`
+|Условная зависимость от пакета package:devel/py-enum34[] в зависимости от версии Python.
+
+|`PY_ENUM_COMPAT`
+|Условная зависимость от пакета package:devel/py-enum-compat[] в зависимости от версии Python.
+
+|`PY_PATHLIB`
+|Условная зависимость от пакета package:devel/py-pathlib[] в зависимости от версии Python.
+
+|`PY_IPADDRESS`
+|Условная зависимость от пакета package:net/py-ipaddress[] в зависимости от версии Python.
+
+|`PY_FUTURES`
+|Условная зависимость от пакета package:devel/py-futures[] в зависимости от версии Python.
+|===
+
+Полный список доступных переменных можно найти в [.filename]#/usr/ports/Mk/Uses/python.mk#.
+
+[IMPORTANT]
+====
+Все зависимости для портов Python, использующих crossref:flavors[flavors-auto-python,флейворы Python] (с `USE_PYTHON=distutils` или `USE_PYTHON=flavors`), должны иметь флейвор Python, добавленную к их origin с помощью `@${PY_FLAVOR}`. См. crossref:special[python-Makefile,Makefile для простого модуля Python].
+====
+
+[[python-Makefile]]
+.Makefile для Простого Модуля Python
+[example]
+====
+[.programlisting]
+....
+PORTNAME=	sample
+DISTVERSION=	1.2.3
+CATEGORIES=	devel
+
+MAINTAINER=	fred.bloggs@example.com
+COMMENT=	Python sample module
+WWW=		https://example.com/project/sample/
+
+RUN_DEPENDS=	${PYTHON_PKGNAMEPREFIX}six>0:devel/py-six@${PY_FLAVOR}
+
+USES=		python
+USE_PYTHON=	autoplist distutils
+
+.include <bsd.port.mk>
+....
+
+====
+
+Некоторые приложения на Python заявляют о поддержке `DESTDIR` (что необходимо для промежуточной сборки), но она не работает (например, Mailman до версии 2.1.16). Это можно обойти, перекомпилировав скрипты. Это можно сделать, например, в цели `post-build`. Предполагая, что Python-скрипты должны находиться в `PYTHONPREFIX_SITELIBDIR` после установки, можно применить следующее решение:
+
+[.programlisting]
+....
+(cd ${STAGEDIR}${PREFIX} \
+  && ${PYTHON_CMD} ${PYTHON_LIBDIR}/compileall.py \
+   -d ${PREFIX} -f ${PYTHONPREFIX_SITELIBDIR:S;${PREFIX}/;;})
+....
+
+Это перекомпилирует исходники с путём, относительным к stage-директории, и добавляет значение `PREFIX` к имени файла, записанному в байт-компилированном выходном файле с помощью `-d`. `-f` требуется для принудительной перекомпиляции, а `:S;${PREFIX}/;;` удаляет префиксы из значения `PYTHONPREFIX_SITELIBDIR`, чтобы сделать его относительным к `PREFIX`.
+
+[[using-tcl]]
+== Использование Tcl/Tk
+
+Коллекция Ports поддерживает параллельную установку нескольких версий Tcl/Tk. Порты должны стараться поддерживать как минимум версию Tcl/Tk по умолчанию и выше с помощью `USES=tcl`. Можно указать желаемую версию `tcl`, добавив `:_xx_`, например, `USES=tcl:85`.
+
+[[using-tcl-variables]]
+.Самые полезные переменные только для чтения для портов, использующих Tcl/Tk
+[cols="1,1", frame="none"]
+|===
+|`TCL_VER`
+| выбранная версия Tcl major.minor
+
+|`TCLSH`
+| полный путь к интерпретатору Tcl
+
+|`TCL_LIBDIR`
+| путь к библиотекам Tcl
+
+|`TCL_INCLUDEDIR`
+| путь к заголовочным файлам Tcl C
+
+|`TCL_PKG_LIB_PREFIX`
+| Префикс библиотеки, согласно TIP595
+
+|`TCL_PKG_STUB_POSTFIX`
+|Заглушка библиотеки postfix
+
+|`TK_VER`
+| выбранная версия Tk major.minor
+
+|`WISH`
+| полный путь к интерпретатору Tk
+
+|`TK_LIBDIR`
+| путь к библиотекам Tk
+
+|`TK_INCLUDEDIR`
+| путь к заголовочным файлам Tk C
+|===
+
+См. crossref:uses[uses-tcl,`USES=tcl`] и crossref:uses[uses-tk,`USES=tk`] в crossref:uses[uses,Использование макросов `USES`] для полного описания этих переменных. Полный список этих переменных доступен в [.filename]#/usr/ports/Mk/Uses/tcl.mk#.
+
+[[using-sdl]]
+== Использование SDL
+
+`USE_SDL` используется для автоматической настройки зависимостей для портов, которые используют библиотеку на основе SDL, такие как package:devel/sdl12[] и package:graphics/sdl_image[].
+
+Эти библиотеки SDL для версии 1.2 распознаются:
+
+* sdl: package:devel/sdl12[]
+* console: package:devel/sdl_console[]
+* gfx: package:graphics/sdl_gfx[]
+* image: package:graphics/sdl_image[]
+* mixer: package:audio/sdl_mixer[]
+* mm: package:devel/sdlmm[]
+* net: package:net/sdl_net[]
+* pango: package:x11-toolkits/sdl_pango[]
+* sound: package:audio/sdl_sound[]
+* ttf: package:graphics/sdl_ttf[]
+
+Эти библиотеки SDL для версии 2.0 распознаются:
+
+* sdl: package:devel/sdl20[]
+* gfx: package:graphics/sdl2_gfx[]
+* image: package:graphics/sdl2_image[]
+* mixer: package:audio/sdl2_mixer[]
+* net: package:net/sdl2_net[]
+* ttf: package:graphics/sdl2_ttf[]
+
+Следовательно, если порт зависит от package:net/sdl_net[] и package:audio/sdl_mixer[], синтаксис будет следующим:
+
+[.programlisting]
+....
+USE_SDL=	net mixer
+....
+
+Пакет зависимости package:devel/sdl12[], который требуется для package:net/sdl_net[] и package:audio/sdl_mixer[], также автоматически добавляется.
+
+Использование `USE_SDL` с указанием SDL 1.2 автоматически:
+
+* Добавить зависимость от sdl12-config в `BUILD_DEPENDS`
+* Добавьте переменную `SDL_CONFIG` в `CONFIGURE_ENV`
+* Добавьте зависимости выбранных библиотек в `LIB_DEPENDS`
+
+Используя `USE_SDL` с записями для SDL 2.0, это автоматически:
+
+* Добавить зависимость от sdl2-config в `BUILD_DEPENDS`
+* Добавьте переменную `SDL2_CONFIG` в `CONFIGURE_ENV`
+* Добавьте зависимости выбранных библиотек в `LIB_DEPENDS`
+
+
+[[using-wx]]
+== Использование wxWidgets
+
+Этот раздел описывает состояние библиотек wxWidgets в дереве портов и их интеграцию с системой портов.
+
+[[wx-introduction]]
+=== Введение
+
+Существует множество версий библиотек wxWidgets, которые конфликтуют между собой (устанавливают файлы с одинаковыми именами). В дереве портов эта проблема решена путем установки каждой версии под разными именами с использованием суффиксов номеров версий.
+
+Очевидный недостаток этого подхода заключается в том, что каждое приложение необходимо модифицировать для поиска нужной версии. К счастью, большинство приложений вызывают скрипт `wx-config` для определения необходимых флагов компилятора и компоновщика. Имя этого скрипта отличается для каждой доступной версии. Большинство приложений учитывают переменную окружения или принимают аргумент configure, чтобы указать, какой скрипт `wx-config` вызывать. В противном случае их необходимо патчить.
+
+[[wx-version]]
+=== Выбор версии
+
+Чтобы порт использовал определённую версию wxWidgets, доступны две переменные для определения (если задана только одна, другая будет установлена в значение по умолчанию):
+
+[[wx-ver-sel-table]]
+.Переменные для выбора версий wxWidgets
+[cols="1,1,1", frame="none", options="header"]
+|===
+| Переменная
+| Описание
+| Значение по умолчанию
+
+|`USE_WX`
+|Список версий, которые порт может использовать
+|Все доступные версии
+
+|`USE_WX_NOT`
+|Список версий, которые порт не может использовать
+|Ничего
+|===
+
+Доступные версии wxWidgets и соответствующие порты в дереве:
+
+[[wx-widgets-versions-table]]
+.Доступные версии wxWidgets
+[cols="1,1", frame="none", options="header"]
+|===
+| Версия
+| Порт
+
+|`2.8`
+|package:x11-toolkits/wxgtk28[]
+
+|`3.0`
+|package:x11-toolkits/wxgtk30[]
+|===
+
+Переменные в crossref:special[wx-ver-sel-table,Переменные для выбора версий wxWidgets] могут быть установлены в одну или несколько комбинаций, разделенных пробелами:
+
+[[wx-widgets-versions-specification]]
+.Спецификации версий wxWidgets
+[cols="1,1", frame="none", options="header"]
+|===
+| Описание
+| Пример
+
+|Единственная версия
+|`2.8`
+
+|Возрастающий диапазон
+|`2.8+`
+
+|Нисходящий диапазон
+|`3.0-`
+
+|Полный диапазон (должен быть возрастающим)
+|`2.8-3.0`
+|===
+
+Существуют также переменные для выбора предпочтительных версий из доступных. Их можно установить в виде списка версий, где первые будут иметь более высокий приоритет.
+[[wx-widgets-preferred-version]]
+.Переменные для выбора предпочтительных версий wxWidgets
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Предназначен для
+
+|`WANT_WX_VER`
+|порт
+
+|`WITH_WX_VER`
+|пользователь
+|===
+
+[[wx-components]]
+=== Выбор компонентов
+
+Существуют другие приложения, которые, не являясь библиотеками wxWidgets, связаны с ними. Эти приложения можно указать в `WX_COMPS`. Доступны следующие компоненты:
+
+[[wx-widgets-components-table]]
+.Доступные компоненты wxWidgets
+[cols="1,1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+| Ограничение версии
+
+|`wx`
+|основная библиотека
+|none
+
+|`contrib`
+|сторонние библиотеки
+|`none`
+
+|`python`
+|wxPython (интерфейс Python)
+|`2.8-3.0`
+|===
+
+Тип зависимости может быть выбран для каждого компонента путем добавления суффикса, разделенного точкой с запятой. Если он отсутствует, будет использоваться тип по умолчанию (см. crossref:special[wx-def-dep-types,Типы зависимостей wxWidgets по умолчанию]). Доступны следующие типы:
+
+[[wx-widgets-dependency-table]]
+.Доступные типы зависимостей wxWidgets
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`build`
+|Компонент необходим для сборки, эквивалентен `BUILD_DEPENDS`
+
+|`run`
+|Компонент необходим для запуска, эквивалентно `RUN_DEPENDS`
+
+|`lib`
+|Компонент необходим для сборки и запуска, эквивалентен `LIB_DEPENDS`
+|===
+
+Значения по умолчанию для компонентов подробно описаны в этой таблице:
+
+[[wx-def-dep-types]]
+.Типы зависимостей wxWidgets по умолчанию
+[cols="1,1", frame="none", options="header"]
+|===
+| Компонент
+| Тип зависимости
+
+|`wx`
+|`lib`
+
+|`contrib`
+|`lib`
+
+|`python`
+|`run`
+
+|`mozilla`
+|`lib`
+
+|`svg`
+|`lib`
+|===
+
+[[wx-components-example]]
+.Выбор компонентов wxWidgets
+[example]
+====
+Этот фрагмент соответствует порту, который использует wxWidgets версии `2.4` и дополнительные библиотеки.
+
+[.programlisting]
+....
+USE_WX=		2.8
+WX_COMPS=	wx contrib
+....
+
+====
+
+[[wx-version-detection]]
+=== Обнаружение установленных версий
+
+Для определения установленной версии определите `WANT_WX`. Если значение не задано для конкретной версии, компоненты будут иметь суффикс версии. `HAVE_WX` будет заполнен после обнаружения.
+
+[[wx-ver-det-example]]
+.Обнаружение установленных версий и компонентов wxWidgets
+[example]
+====
+Этот фрагмент может использоваться в порте, который использует wxWidgets, если они установлены или выбран соответствующий параметр.
+
+[.programlisting]
+....
+WANT_WX=	yes
+
+.include <bsd.port.pre.mk>
+
+.if defined(WITH_WX) || !empty(PORT_OPTIONS:MWX) || !empty(HAVE_WX:Mwx-2.8)
+USE_WX=			2.8
+CONFIGURE_ARGS+=	--enable-wx
+.endif
+....
+
+Этот фрагмент может использоваться в порте, который включает поддержку wxPython, если она установлена или выбрана соответствующая опция, в дополнение к wxWidgets, обе версии `2.8`.
+
+[.programlisting]
+....
+USE_WX=		2.8
+WX_COMPS=	wx
+WANT_WX=	2.8
+
+.include <bsd.port.pre.mk>
+
+.if defined(WITH_WXPYTHON) || !empty(PORT_OPTIONS:MWXPYTHON) || !empty(HAVE_WX:Mpython)
+WX_COMPS+=		python
+CONFIGURE_ARGS+=	--enable-wxpython
+.endif
+....
+
+====
+
+[[wx-defined-variables]]
+=== Переменные, определенные в фреймворке
+
+Эти переменные доступны в порте (после определения одной из crossref:special[wx-ver-sel-table,переменных для выбора версий wxWidgets]).
+
+[[wx-widgets-variables]]
+.Переменные, определенные для портов, использующих wxWidgets
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`WX_CONFIG`
+|Путь к скрипту `wx-config` wxWidgets (с другим именем)
+
+|`WXRC_CMD`
+|Путь к программе `wxrc` wxWidgets (с другим именем)
+
+|`WX_VERSION`
+|Версия wxWidgets, которая будет использоваться (например, `2.6`)
+|===
+
+[[wx-premk]]
+=== Обработка в [.filename]#bsd.port.pre.mk#
+
+Определите `WX_PREMK`, чтобы иметь возможность использовать переменные сразу после включения [.filename]#bsd.port.pre.mk#.
+
+[IMPORTANT]
+====
+При определении `WX_PREMK` версия, зависимости, компоненты и определенные переменные не изменятся при модификации переменных порта wxWidgets _после_ включения [.filename]#bsd.port.pre.mk#.
+====
+
+[[wx-premk-example]]
+.Использование переменных wxWidgets в командах
+[example]
+====
+Этот фрагмент иллюстрирует использование `WX_PREMK` путем запуска скрипта `wx-config` для получения полной строки версии, присвоения её переменной и передачи в программу.
+
+[.programlisting]
+....
+USE_WX=		2.8
+WX_PREMK=	yes
+
+.include <bsd.port.pre.mk>
+
+.if exists(${WX_CONFIG})
+VER_STR!=	${WX_CONFIG} --release
+
+PLIST_SUB+=	VERSION="${VER_STR}"
+.endif
+....
+
+====
+
+[NOTE]
+====
+Переменные wxWidgets можно безопасно использовать в командах внутри целей без необходимости в `WX_PREMK`.
+====
+
+[[wx-additional-config-args]]
+=== Дополнительные параметры `configure`
+
+Некоторые скрипты GNU `configure` не могут найти wxWidgets, если задана только переменная окружения `WX_CONFIG`, и требуют дополнительные параметры. `WX_CONF_ARGS` можно использовать для их указания.
+
+[[wx-conf-args-values]]
+.Допустимые значения для `WX_CONF_ARGS`
+[cols="1,1", frame="none", options="header"]
+|===
+| Возможное значение
+| Получаемый параметр
+
+|`absolute`
+|`--with-wx-config=${WX_CONFIG}`
+
+|`relative`
+|`--with-wx=${LOCALBASE} --with-wx-config=${WX_CONFIG:T}`
+|===
+
+[[using-lua]]
+== Использование Lua
+
+Этот раздел описывает состояние библиотек Lua в дереве портов и их интеграцию с системой портов.
+
+[[lua-introduction]]
+=== Введение
+
+Существует множество версий библиотек Lua и соответствующих интерпретаторов, которые конфликтуют между собой (устанавливают файлы с одинаковыми именами). В дереве портов эта проблема решена установкой каждой версии под разными именами с использованием суффиксов номеров версий.
+
+Очевидный недостаток этого заключается в том, что каждое приложение необходимо модифицировать для поиска ожидаемой версии. Однако это можно решить, добавив дополнительные флаги компилятору и компоновщику.
+
+Приложения, использующие Lua, обычно должны собираться только для одной версии. Однако загружаемые модули для Lua собираются в отдельных флейворах для каждой поддерживаемой версии Lua, и зависимости от таких модулей должны указывать флейвор с использованием суффикса `@${LUA_FLAVOR}` в расположении (origin) порта.
+
+[[lua-version]]
+=== Выбор версии
+
+Порт, использующий Lua, должен содержать строку следующего вида:
+
+[.programlisting]
+....
+USES=	lua
+....
+
+Если требуется определённая версия Lua или диапазон версий, его можно указать в виде параметра `XY` (который можно использовать несколько раз), `XY+`, `-XY` или `XY-ZA`. Версия Lua, установленная через `DEFAULT_VERSIONS`, будет использована, если она попадает в запрошенный диапазон, в противном случае будет использована ближайшая к умолчанию запрошенная версия. Например:
+
+[.programlisting]
+....
+USES=	lua:52-53
+....
+
+Обратите внимание, что не предпринимается попытка изменить выбор версии на основе наличия любой уже установленной версии Lua.
+
+[NOTE]
+====
+Форма указания версии `XY+` не должна использоваться без тщательного обдумывания; Lua API в некоторой степени меняется с каждой версией, и инструменты конфигурации, такие как CMake или Autoconf, скорее всего не будут работать с будущими версиями Lua, пока не будут обновлены для этого.
+====
+
+[[lua-version-config]]
+=== Конфигурация и флаги компилятора
+
+Программное обеспечение, использующее Lua, может быть написано с автоматическим определением версии Lua в использовании. В общем случае порты должны переопределять это предположение и принудительно использовать конкретную выбранную версию Lua, как описано выше. В зависимости от портируемого программного обеспечения, это может потребовать любого или всех из следующих действий:
+
+* Использование `LUA_VER` в качестве части параметра для скрипта конфигурации программного обеспечения через `CONFIGURE_ARGS` или `CONFIGURE_ENV` (или эквивалентные для других систем сборки);
+* Добавление `-I${LUA_INCDIR}`, `-L${LUA_LIBDIR}` и `-llua-${LUA_VER}` в `CFLAGS`, `LDFLAGS` и `LIBS` соответственно, где это необходимо;
+* Исправьте конфигурационные или файлы сборки программного обеспечения, чтобы выбрать правильную версию.
+
+
+[[lua-version-flavors]]
+=== Флейворы версии
+
+Порт, который устанавливает модуль Lua (а не приложение, просто использующее Lua), должен собирать отдельный флейвор для каждой поддерживаемой версии Lua. Это делается путем добавления параметра `module`:
+
+[.programlisting]
+....
+USES=	lua:module
+....
+
+Так же может быть указае номер версии или диапазон версий. Используйте запятую для разделения параметров.
+
+Поскольку каждый флейвор должен иметь уникальное имя пакета, предоставляется переменная `LUA_PKGNAMEPREFIX`, которая будет установлена в соответствующее значение; предполагаемое использование:
+
+[.programlisting]
+....
+PKGNAMEPREFIX=	${LUA_PKGNAMEPREFIX}
+....
+
+Модульные порты обычно должны устанавливать файлы только в `LUA_MODLIBDIR`, `LUA_MODSHAREDIR`, `LUA_DOCSDIR` и `LUA_EXAMPLESDIR`, все из которых настроены на ссылки в версионно-зависимые подкаталоги. Установка любых других файлов должна выполняться с осторожностью, чтобы избежать конфликтов между версиями.
+
+Порт (кроме модуля Lua), который хочет собрать отдельный пакет для каждой версии Lua, должен использовать параметр `flavors`:
+
+[.programlisting]
+....
+USES=	lua:flavors
+....
+
+Это работает так же, как параметр `module`, описанный выше, но без предположения, что пакет должен быть задокументирован как модуль Lua (поэтому `LUA_DOCSDIR` и `LUA_EXAMPLESDIR` по умолчанию не определены). Однако порт может определить `LUA_DOCSUBDIR` как подходящее имя подкаталога (обычно `PORTNAME` порта, если это не конфликтует с `PORTNAME` любого модуля), и в этом случае фреймворк определит как `LUA_DOCSDIR`, так и `LUA_EXAMPLESDIR`.
+
+Как и в случае с модульными портами, порт с флейворами должен избегать установки файлов, которые могут конфликтовать между версиями. Обычно это достигается добавлением `LUA_VER_STR` в качестве суффикса к именам программ (например, с использованием crossref:uses[uses-uniquefiles,`uniquefiles`]), а также использованием `LUA_VER` или `LUA_VER_STR` в составе других файлов или поддиректорий, используемых вне `LUA_MODLIBDIR` и `LUA_MODSHAREDIR`.
+
+[[lua-defined-variables]]
+=== Переменные, определенные в фреймворке
+
+В порте доступны эти переменные.
+
+[[using-lua-variables-ports]]
+.Переменные, определенные для портов, использующих Lua
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`LUA_VER`
+|Версия Lua, которая будет использоваться (например, `5.4`)
+
+|`LUA_VER_STR`
+|Версия Lua без точек (например, `54`)
+
+|`LUA_FLAVOR`
+|Имя флейвора, соответствующее выбранной версии Lua, используемое для указания зависимостей
+
+|`LUA_BASE`
+|Префикс, который должен использоваться для поиска Lua (и компонентов), уже установленных
+
+|`LUA_PREFIX`
+|Префикс, куда этим портом будут установлены Lua (и компоненты)
+
+|`LUA_INCDIR`
+|Каталог, в котором установлены заголовочные файлы Lua
+
+|`LUA_LIBDIR`
+|Каталог, в котором установлены библиотеки Lua
+
+|`LUA_REFMODLIBDIR`
+|Каталог, в котором находятся уже установленные библиотеки модулей Lua ([.filename]#.so#)
+
+|`LUA_REFMODSHAREDIR`
+|Каталог, в котором находятся установленные модули Lua ([.filename]#.lua#)
+
+|`LUA_MODLIBDIR`
+|Каталог, в котором библиотеки модулей Lua ([.filename]#.so#) должны быть установлены данным портом
+
+|`LUA_MODSHAREDIR`
+|Каталог, в котором должны быть установлены модули Lua ([.filename]#.lua#) данным портом
+
+|`LUA_PKGNAMEPREFIX`
+|Префикс имени пакета, используемый модулями Lua
+
+|`LUA_CMD`
+|Название интерпретатора Lua (например, `lua54`)
+
+|`LUAC_CMD`
+|Название компилятора Lua (например, `luac54`)
+|===
+
+Эти дополнительные переменные доступны для портов, которые указали параметр `module`:
+
+[[using-lua-variables-modules]]
+.Переменные, определенные для модулей Lua в портах
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|`LUA_DOCSDIR`
+|каталог, в который должна быть установлена документация модуля.
+
+|`LUA_EXAMPLESDIR`
+|каталог, в который должны быть установлены примеры файлов модуля.
+|===
+
+[[lua-examples]]
+=== Примеры
+
+[[lua-app-Makefile]]
+.`Makefile` для приложения, использующего Lua
+[example]
+====
+Этот пример показывает, как сослаться на модуль Lua, требуемый во время выполнения. Обратите внимание, что ссылка должна указывать флейвор.
+
+[.programlisting]
+....
+PORTNAME=	sample
+DISTVERSION=	1.2.3
+CATEGORIES=	whatever
+
+MAINTAINER=	fred.bloggs@example.com
+COMMENT=	Sample
+WWW=		https://example.com/lua_sample/sample/
+
+RUN_DEPENDS=	${LUA_REFMODLIBDIR}/lpeg.so:devel/lua-lpeg@${LUA_FLAVOR}
+
+USES=		lua
+
+.include <bsd.port.mk>
+....
+
+====
+
+[[lua-mod-Makefile]]
+.`Makefile` для простого модуля Lua
+[example]
+====
+[.programlisting]
+....
+PORTNAME=	sample
+DISTVERSION=	1.2.3
+CATEGORIES=	whatever
+PKGNAMEPREFIX=	${LUA_PKGNAMEPREFIX}
+
+MAINTAINER=	fred.bloggs@example.com
+COMMENT=	Sample
+WWW=		https://example.com/lua_sample/sample/
+
+USES=		lua:module
+
+DOCSDIR=	${LUA_DOCSDIR}
+
+.include <bsd.port.mk>
+....
+
+====
+
+[[using-guile]]
+== Использование Guile
+
+Этот раздел описывает состояние Guile в дереве портов и его интеграцию с системой портов.
+
+[[guile-introduction]]
+=== Введение
+
+Существует несколько версий библиотек Guile и соответствующих интерпретаторов, которые конфликтуют между собой (устанавливают файлы с одинаковыми именами). В дереве портов эта проблема решена путем установки каждой версии под разными именами с использованием суффиксов номеров версий. В большинстве случаев приложения должны определять правильную версию из предоставленных конфигурационных переменных и использовать `pkg-config` для определения имени и связанных путей. Однако некоторые приложения (особенно те, которые используют собственные правила конфигурации для `cmake` или `meson`) всегда будут пытаться использовать последнюю доступную версию. В этом случае либо исправьте порт, либо объявите конфликт сборки (см. опцию `conflicts` ниже), чтобы гарантировать создание правильной зависимости при сборке вне poudriere.
+
+Приложения, использующие Guile, обычно должны собираться только для одной версии, предпочтительно указанной в `DEFAULT_VERSIONS`, или, если это невозможно, для последней поддерживаемой версии. Однако библиотеки Guile или Scheme, а также модули расширения для Guile собираются в отдельных флейворах для каждой поддерживаемой версии Guile. Зависимости от таких портов должны указывать флейвор с использованием суффикса `@${GUILE_FLAVOR}` в расположении (origin) порта.
+
+[[guile-version]]
+=== Выбор версии
+
+Порт, использующий Guile, должен определять `USES=guile:__arg,arg...__` с соответствующими параметрами следующим образом:
+
+[[guile-defined-uses-args]]
+.Параметры, определенные для портов, использующих Guile
+[cols="1m,4", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+|_X.Y_
+|Объявить совместимость с версией Guile `X.Y`.
+Доступные версии: `1.8` (устарела), `2.2` и `3.0`.
+Можно указать несколько версий.
+
+|flavors
+|Создать флейвор для каждой указанной версии Guile.
+Версия, указанная в `DEFAULT_VERSIONS`, станет флейвором по умолчанию.
+Названия флейворов имеют вид `guileXY`.
+
+|build
+|Добавить интерпретатор Guile только как зависимость для сборки, а не как зависимость библиотеки.
+`build` и `run` могут быть указаны оба.
+
+|run
+|Добавить интерпретатор Guile только как зависимость во время выполнения, а не как зависимость от библиотеки.
+`build` и `run` могут быть указаны оба.
+
+|alias
+|Добавить значения `BINARY_ALIAS` для интерпретатора и инструментов.
+
+|conflicts
+|Объявить `CONFLICTS_BUILD` для версий Guile новее выбранной. 
+Используйте это, когда порт нельзя настроить на использование определённой версии Guile.
+|===
+
+Некоторые дополнительные аргументы доступны для обработки нестандартных случаев; подробности см. в `Mk/Uses/guile.mk`.
+
+Если не указано `build` или `run`, то `LIB_DEPENDS` получает зависимость от библиотеки `libguile`, а также любые дополнительные зависимости, требуемые версией guile, например, `libgc`. Обычно порту не требуются дополнительные зависимости, связанные с использованием Guile.
+
+[[guile-version-config]]
+=== Флаги конфигурации
+
+Программное обеспечение, использующее Guile, должно использовать механизм `pkg-config` для получения флагов компилятора и компоновщика. Некоторые старые или экзотические порты могут использовать `guile-config` или получать значения напрямую из `guile`, что также должно работать (в некоторых из этих случаев может быть полезен аргумент `alias`).
+
+Фреймворк пытается сообщить порту желаемую версию Guile, используя следующие методы:
+
+* `GUILE_EFFECTIVE_VERSION` добавлен в `CONFIGURE_ENV`;
+* Полный путь к исполняемому файлу Guile указан в переменной `GUILE` в `CONFIGURE_ENV` и `MAKE_ENV`;
+* Если используется опция `alias`, то желаемые версии бинарных файлов Guile являются теми, которые имеют алиасы;
+* Если параметр `alias` не используется, пути к инструментам нужной версии Guile (`guild`, `guile-config` и т.д.) добавляются в `CONFIGURE_ENV` и `MAKE_ENV` в виде переменных `GUILD`, `GUILE_CONFIG` и т.д.
+
+Для некоторых портов может потребоваться указать версию дополнительными способами, например, через `CONFIGURE_ARGS` или `MESON_ARGS`, в зависимости от порта.
+
+Если ни один из этих методов не приводит к тому, что порт выбирает указанную версию Guile при наличии других версий, то предпочтительно исправить его, чтобы это происходило. Если это невозможно, укажите опцию `conflicts`, чтобы предотвратить сборку порта в условиях, когда он обнаруживает неправильную версию.
+
+[[guile-version-flavors]]
+=== Флейворы версии
+
+Порт, который устанавливает расширение или библиотеку Guile, или библиотеку Scheme, которая предварительно компилируется для Guile, должен собирать отдельный флейвор для каждой поддерживаемой версии Guile. Это делается путем добавления опции `flavors`.
+
+Поскольку каждый флейвор должен иметь уникальное имя пакета, такие порты обычно устанавливают `PKGNAMESUFFIX`, например:
+
+[.programlisting]
+....
+PKGNAMESUFFIX=	-${FLAVOR}
+....
+
+Такие порты должны устанавливать файлы Scheme в `GUILE_SITE_DIR`, а не в `GUILE_GLOBAL_SITE_DIR`, даже если файлы не зависят от версии. Это часто требует исправления порта.
+
+Кроме того, если такой порт устанавливает файл `.pc`, он должен быть размещён в `GUILE_PKGCONFIG_PATH`, а не в глобальной директории `pkgconfig`. Это позволяет зависимым портам находить правильную конфигурацию для используемой версии Guile.
+
+Если порт расширения Guile устанавливает файл `.so`, то обычно он должен быть размещён в специфичной для версии Guile директории `extensions`. Обычно не следует использовать `USE_LDCONFIG`.
+
+Любые другие файлы, устанавливаемые портом с флейвором, также должны находиться в версионных каталогах или использовать версионные имена файлов. Для документации и примеров переменные `GUILE_DOCS_DIR` и `GUILE_EXAMPLES_DIR` указывают подходящие расположения, в которых порт должен создать подкаталог (см. ниже).
+
+[[guile-defined-variables]]
+=== Переменные, определенные в фреймворке
+
+В порте доступны эти переменные.
+
+[[using-guile-variables-ports]]
+.Переменные, определенные для портов, использующих Guile
+[cols="1,3m,6", frame="none", options="header"]
+|===
+| Имя
+| Пример значения
+| Описание
+
+|`GUILE_VER`
+|3.0
+|Используемая версия Guile.
+
+|`GUILE_SFX`
+|3
+|Короткий суффикс, используемый в некоторых именах.
+Используйте с осторожностью; может быть неуникальным или измениться в будущем.
+
+|`GUILE_FLAVOR`
+|guile30
+|Название флейвора, соответствующее выбранной версии.
+
+|`GUILE_PORT`
+|lang/guile3
+|Расположение порта (origin) для указанной версии Guile.
+
+|`GUILE_PREFIX`
+|${PREFIX}
+|Префикс каталога для использования при установке.
+
+|`GUILE_CMD`
+|guile-3.0
+|Имя интерпретатора Guile с суффиксом версии.
+
+|`GUILE_CMDPATH`
+|${LOCALBASE}/bin/guile-3.0
+|Полный путь к интерпретатору Guile.
+
+|`GUILD_CMD`
+|guild-3.0
+|Название инструмента Guild, с суффиксом версии.
+
+|`GUILD_CMDPATH`
+|`${LOCALBASE}/bin/guild-3.0`
+|Полный путь к инструменту Guild.
+
+|`++GUILE_*_CMD++` +
+`++GUILE_*_CMDPATH++`
+| 
+|Как `GUILE_CMD` и `GUILE_CMDPATH`, но для других исполняемых файлов утилит.
+
+|`GUILE_PKGCONFIG_PATH`
+|${LOCALBASE}/libdata/pkgconfig/guile/3.0
+|Где пакеты, использующие `flavors`, должны устанавливать файлы `.pc`.
+
+|`GUILE_INFO_PATH`
+|share/info/guile3
+|Подходящее значение для `INFO_PATH` для портов, использующих опцию `flavors`.
+|===
+
+Следующие элементы определены как переменные и как записи `PLIST_SUB`. Форма переменной имеет суффикс `_DIR` и представляет собой полный путь (с префиксом `GUILE_PREFIX`).
+
+[[using-guile-path-variables-ports]]
+.Подстановки путей, определенные для портов, использующих Guile
+[cols="1m,3m,6", frame="none", options="header"]
+|===
+| Имя
+| Пример значения
+| Описание
+
+|GUILE_GLOBAL_SITE
+|share/guile/site
+|Каталог сайта, общий для всех версий guile; обычно не должен использоваться.
+
+|GUILE_SITE
+|share/guile/3.0/site
+|Каталог сайта для выбранной версии Guile.
+
+|GUILE_SITE_CCACHE
+|lib/guile/3.0/site-ccache
+|Каталог для скомпилированных файлов байт-кода.
+
+|GUILE_DOCS
+|share/doc/guile30
+|Родительский каталог для документации, специфичной для версий.
+
+|GUILE_EXAMPLES
+|share/examples/guile30
+|Родительский каталог для примеров, специфичных для версий.
+|===
+
+[[guile-examples]]
+=== Примеры
+
+[[guile-app-Makefile]]
+.`Makefile` для приложения, использующего Guile
+[example]
+====
+Этот пример демонстрирует, как сослаться на библиотеку Guile, необходимую во время сборки и выполнения. Обратите внимание, что ссылка должна указывать флейвор. В этом примере предполагается, что приложение использует `pkg-config` для поиска зависимостей.
+
+[.programlisting]
+....
+PORTNAME=	sample
+DISTVERSION=	1.2.3
+CATEGORIES=	whatever
+
+MAINTAINER=	fred.bloggs@example.com
+COMMENT=	Sample
+WWW=		https://example.com/guile_sample/sample/
+
+BUILD_DEPENDS=	guile-lib-${GUILE_FLAVOR}>=0.2.5:devel/guile-lib@${GUILE_FLAVOR}
+RUN_DEPENDS=	guile-lib-${GUILE_FLAVOR}>=0.2.5:devel/guile-lib@${GUILE_FLAVOR}
+
+USES=		guile:2.2,3.0 pkgconfig
+
+.include <bsd.port.mk>
+....
+
+====
+
+[[using-iconv]]
+== Использование `iconv`
+
+В FreeBSD имеется встроенная реализация `iconv` в самой операционной системе.
+
+Для программного обеспечения, требующего `iconv`, определите `USES=iconv`.
+
+Когда порт определяет `USES=iconv`, становятся доступны следующие переменные:
+
+[.informaltable]
+[cols="1,1,1,1", frame="none", options="header"]
+|===
+| Имя переменной
+| Назначение
+| Порт iconv (при использовании расширений WCHAR_T или //TRANSLIT)
+| Базовый iconv
+
+
+|`ICONV_CMD`
+|Каталог, в котором находится бинарный файл `iconv`
+|`${LOCALBASE}/bin/iconv`
+|[.filename]#/usr/bin/iconv#
+
+|`ICONV_LIB`
+|аргумент `ld` для линковки с [.filename]#libiconv# (если требуется)
+|`-liconv`
+|(пусто)
+
+|`ICONV_PREFIX`
+|Каталог, в котором находится реализация `iconv` (полезно для скриптов configure)
+|`${LOCALBASE}`
+|[.filename]#/usr#
+
+|`ICONV_CONFIGURE_ARG`
+|Предварительно сконструированный аргумент configure для скриптов configure
+|`--with-libiconv-prefix=${LOCALBASE}`
+|(пусто)
+
+|`ICONV_CONFIGURE_BASE`
+|Предварительно сконструированный аргумент configure для скриптов configure
+|`--with-libiconv=${LOCALBASE}`
+|(пусто)
+|===
+
+Эти два примера автоматически заполняют переменные правильным значением для систем, использующих package:converters/libiconv[] или `iconv`, входящий в состав операционной системы, соответственно:
+
+[[iconv-simple-use]]
+.Простое использование `iconv`
+[example]
+====
+[.programlisting]
+....
+USES=		iconv
+LDFLAGS+=	-L${LOCALBASE}/lib ${ICONV_LIB}
+....
+
+====
+
+[[iconv-configure-use]]
+.Использование `iconv` с `configure`
+[example]
+====
+[.programlisting]
+....
+USES=		iconv
+CONFIGURE_ARGS+=${ICONV_CONFIGURE_ARG}
+....
+
+====
+
+Как показано выше, `ICONV_LIB` пуста, когда присутствует встроенный `iconv`. Это можно использовать для обнаружения встроенного `iconv` и действовать соответственно.
+
+Иногда в программе аргумент `ld` или путь поиска жестко заданы в [.filename]#Makefile# или скрипте configure. Для решения этой проблемы можно использовать следующий подход:
+
+[[iconv-reinplace]]
+.Исправление жестко заданного `-liconv`
+[example]
+====
+[.programlisting]
+....
+USES=		iconv
+
+post-patch:
+	@${REINPLACE_CMD} -e 's/-liconv/${ICONV_LIB}/' ${WRKSRC}/Makefile
+....
+
+====
+
+В некоторых случаях необходимо установить альтернативные значения или выполнить операции в зависимости от наличия встроенного `iconv`. [.filename]#bsd.port.pre.mk# должен быть включен до проверки значения `ICONV_LIB`:
+
+[[iconv-conditional]]
+.Проверка доступности встроенной поддержки `iconv`
+[example]
+====
+[.programlisting]
+....
+USES=		iconv
+
+.include <bsd.port.pre.mk>
+
+post-patch:
+.if empty(ICONV_LIB)
+	# native iconv detected
+	@${REINPLACE_CMD} -e 's|iconv||' ${WRKSRC}/Config.sh
+.endif
+
+.include <bsd.port.post.mk>
+....
+
+====
+
+[[using-xfce]]
+== Использование Xfce
+
+Порты, которым требуются библиотеки или приложения Xfce, устанавливают `USES=xfce`.
+
+Конкретные зависимости библиотек и приложений Xfce задаются с помощью значений, присвоенных `USE_XFCE`. Они определены в [.filename]#/usr/ports/Mk/Uses/xfce.mk#. Возможные значения:
+
+.Значения `USE_XFCE`
+garcon::
+package:sysutils/garcon[]
+
+libexo::
+package:x11/libexo[]
+
+libgui::
+package:x11-toolkits/libxfce4gui[]
+
+libmenu::
+package:x11/libxfce4menu[]
+
+libutil::
+package:x11/libxfce4util[]
+
+panel::
+package:x11-wm/xfce4-panel[]
+
+thunar::
+package:x11-fm/thunar[]
+
+xfconf::
+package:x11/xfce4-conf[]
+
+[[use-xfce]]
+.Пример `USES=xfce`
+[example]
+====
+[.programlisting]
+....
+USES=		xfce
+USE_XFCE=	libmenu
+....
+
+====
+
+[[use-xfce-gtk2]]
+.Использование собственных виджетов GTK2 в Xfce
+[example]
+====
+В этом примере портированное приложение использует пакет виджетов, специфичных для GTK2: package:x11/libxfce4menu[] и package:x11/xfce4-conf[].
+
+[.programlisting]
+....
+USES=		xfce:gtk2
+USE_XFCE=	libmenu xfconf
+....
+
+====
+
+[TIP]
+====
+Компоненты Xfce, включённые таким образом, автоматически загрузят все необходимые зависимости. Указывать полный список больше не требуется. Если порту нужен только package:x11-wm/xfce4-panel[], используйте:
+
+[.programlisting]
+....
+USES=		xfce
+USE_XFCE=	panel
+....
+
+Нет необходимости перечислять компоненты package:x11-wm/xfce4-panel[], которые ему самому требуются, вот так:
+
+[.programlisting]
+....
+USES=		xfce
+USE_XFCE=	libexo libmenu libutil panel
+....
+
+Однако компоненты Xfce и зависимости порта, не относящиеся к Xfce, должны быть явно включены. Не рассчитывайте, что компонент Xfce предоставит дополнительную зависимость, кроме себя, для основного порта.
+====
+
+[[using-budgie]]
+== Использование Budgie
+
+Приложения или библиотеки, зависящие от рабочего стола Budgie, должны указывать `USES= budgie` и устанавливать `USE_BUDGIE` в список необходимых компонентов.
+
+[cols="1,1", frame="none", options="header"]
+|===
+| Имя
+| Описание
+
+| `libbudgie`
+| Ядро рабочего стола (библиотека)
+
+| `libmagpie`
+| Оконный менеджер X11 и библиотека композитинга Budgie
+
+| `raven`
+| Универсальный центр в панели для доступа к различным виджетам приложений
+
+| `screensaver`
+| Рабочий стол: специальная заставка
+
+|===
+
+[NOTE]
+====
+Все виджеты приложений взаимодействуют через службу *org.budgie_desktop.Raven*.
+
+Зависимость по умолчанию включает время сборки и выполнения, её можно изменить с помощью `:build` или `:run`, например:
+
+[.programlisting]
+....
+USES=		budgie
+USE_BUDGIE=	screensaver:build
+....
+====
+
+[[budgie-components-example]]
+.Пример `USE_BUDGIE`
+[example]
+====
+[.programlisting]
+....
+USES=		budgie gettext gnome meson pkgconfig
+USE_BUDGIE=	libbudgie
+....
+====
+
+[[using-databases]]
+== Использование баз данных
+
+Используйте один из макросов `USES` из crossref:special[using-databases-uses,Макросы `USES` для баз данных], чтобы добавить зависимость от базы данных.
+
+[[using-databases-uses]]
+.Макросы `USES` для баз данных
+[cols="1,1", frame="none", options="header"]
+|===
+| База данных
+| Макрос USES
+
+|Berkeley DB
+|crossref:uses[uses-bdb,`bdb`]
+
+|MariaDB, MySQL, Percona
+|crossref:uses[uses-mysql,`mysql`]
+
+|PostgreSQL
+|crossref:uses[uses-pgsql,`pgsql`]
+
+|SQLite
+|crossref:uses[uses-sqlite,`sqlite`]
+|===
+
+[[using-databases-bdb-ex1]]
+.Использование Berkeley DB 6
+[example]
+====
+[.programlisting]
+....
+USES=	bdb:6
+....
+
+См. crossref:uses[uses-bdb,`bdb`] для получения дополнительной информации.
+====
+
+[[using-databases-mysql-ex1]]
+.Использование MySQL
+[example]
+====
+Когда порту требуется клиентская библиотека MySQL, добавьте
+
+[.programlisting]
+....
+USES=	mysql
+....
+
+См. crossref:uses[uses-mysql,`mysql`] для получения дополнительной информации.
+====
+
+[[using-databases-pgsql-ex1]]
+.Использование PostgreSQL
+[example]
+====
+Когда порту требуется сервер PostgreSQL версии 9.6 или новее, добавьте
+
+[.programlisting]
+....
+USES=		pgsql:9.6+
+WANT_PGSQL=	server
+....
+
+См. crossref:uses[uses-pgsql,`pgsql`] для получения дополнительной информации.
+====
+
+[[using-databases-sqlite-ex1]]
+.Использование SQLite 3
+[example]
+====
+[.programlisting]
+....
+USES=	sqlite:3
+....
+
+См. crossref:uses[uses-sqlite,`sqlite`] для получения дополнительной информации.
+====
+
+[[rc-scripts]]
+== Запуск и остановка служб (скрипты `rc`)
+
+[.filename]#rc.d# скрипты используются для запуска служб при загрузке системы, а также предоставляют администраторам стандартный способ остановки, запуска и перезапуска служб. Порты интегрируются в систему [.filename]#rc.d#. Подробности использования можно найти в extref:{handbook}[соответствующей главе Handbook, configtuning-rcd]. Детальное объяснение доступных команд приведено в man:rc[8] и man:rc.subr[8]. Наконец, существует extref:{rc-scripting}[статья], посвящённая практическим аспектам написания [.filename]#rc.d# скриптов.
+
+С мифическим портом под названием _doorman_, которому необходимо запустить демон _doormand_. Добавьте следующее в [.filename]#Makefile#:
+
+[.programlisting]
+....
+USE_RC_SUBR=	doormand
+....
+
+Можно указать несколько скриптов, которые будут установлены. Скрипты должны быть размещены в подкаталоге [.filename]#files#, и к их имени должен быть добавлен суффикс `.in`. Для этого файла будут выполнены стандартные подстановки `SUB_LIST`. Также настоятельно рекомендуется использовать подстановки `%%PREFIX%%` и `%%LOCALBASE%%`. Подробнее о `SUB_LIST` см. в crossref:pkg-files[using-sub-files,соответствующем разделе].
+
+Начиная с FreeBSD 6.1-RELEASE, локальные скрипты [.filename]#rc.d# (включая те, что установлены через порты) включены в общий man:rcorder[8] базовой системы.
+
+Пример простого скрипта [.filename]#rc.d# для запуска демона doormand:
+
+[.programlisting]
+....
+#!/bin/sh
+
+# PROVIDE: doormand
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+#
+# Add these lines to /etc/rc.conf.local or /etc/rc.conf
+# to enable this service:
+#
+# doormand_enable (bool):	Set to NO by default.
+#				Set it to YES to enable doormand.
+# doormand_config (path):	Set to %%PREFIX%%/etc/doormand/doormand.cf
+#				by default.
+
+. /etc/rc.subr
+
+name=doormand
+rcvar=doormand_enable
+
+load_rc_config $name
+
+: ${doormand_enable:="NO"}
+: ${doormand_config="%%PREFIX%%/etc/doormand/doormand.cf"}
+
+command=%%PREFIX%%/sbin/${name}
+pidfile=/var/run/${name}.pid
+
+command_args="-p $pidfile -f $doormand_config"
+
+run_rc_command "$1"
+....
+
+Если нет очень веской причины запускать службу раньше или она работает от имени определенного пользователя (не root), все скрипты портов должны использовать:
+
+[.programlisting]
+....
+REQUIRE: LOGIN
+....
+
+Если скрипт запуска демона требует его остановки, следующий код активирует остановку службы при выключении системы:
+
+[.programlisting]
+....
+KEYWORD: shutdown
+....
+
+Если скрипт не запускает постоянную службу, это не требуется.
+
+Для необязательных элементов конфигурации предпочтительнее использовать стиль присваивания переменных по умолчанию "=" вместо стиля ":=", так как первый устанавливает значение по умолчанию только если переменная не задана, а второй — если переменная не задана _или_ равна null. Пользователь может включить что-то вроде:
+
+[.programlisting]
+....
+doormand_flags=""
+....
+
+в свой [.filename]#rc.conf.local#, а подстановка переменной с использованием ":=" некорректно переопределила бы намерение пользователя. Переменная `_enable` не является опциональной и должна использовать ":" для значения по умолчанию.
+
+[IMPORTANT]
+====
+Порты _не должны_ запускать и останавливать свои службы при установке и удалении. Не злоупотребляйте ключевыми словами [.filename]#plist#, описанными в crossref:plist[plist-keywords-base-exec, "разделе @preexec command,@postexec command,@preunexec command,@postunexec command"], выполняя команды, которые изменяют работающую систему, включая запуск или остановку служб.
+====
+
+[[rc-scripts-checklist]]
+=== Pre-Commit Checklist
+
+Прежде чем внести порт с [.filename]#rc.d# скриптом, и что более важно, перед его коммитом, пожалуйста, ознакомьтесь с этим контрольным списком, чтобы убедиться, что он готов.
+
+Порт package:devel/rclint[] может проверить большинство из них, но он не заменяет тщательного просмотра и проверки.
+
+[.procedure]
+. Если это новый файл, имеет ли он расширение [.filename]#.sh#? Если да, его необходимо изменить на просто [.filename]#file.in#, поскольку файлы [.filename]#rc.d# не могут оканчиваться таким расширением.
+. Совпадают ли имя файла (без [.filename]#.in#), строка `PROVIDE` и `$`_name_? Совпадение имени файла с `PROVIDE` упрощает отладку, особенно при проблемах с man:rcorder[8]. Совпадение имени файла и `$`_name_ облегчает понимание того, какие переменные актуальны в [.filename]#rc.conf[.local]#. Это также является политикой для всех новых скриптов, включая те, что в базовой системе.
+. Установлена ли строка `REQUIRE` в значение `LOGIN`? Это обязательно для скриптов, выполняемых от имени непривилегированного пользователя. Если скрипт выполняется от имени root, есть ли веская причина для его запуска до `LOGIN`? Если нет, он должен запускаться после, чтобы локальные скрипты можно было условно сгруппировать в man:rcorder[8] после запуска большинства компонентов базовой системы.
+. Запускает ли скрипт постоянную службу? Если да, он должен содержать `KEYWORD: shutdown`.
+. Убедитесь, что отсутствует `KEYWORD: FreeBSD`. Это перестало быть необходимым или желательным уже много лет. Это также указывает на то, что новый скрипт был скопирован/вставлен из старого скрипта, поэтому следует проявить дополнительную осторожность при проверке.
+. Если скрипт использует интерпретируемый язык, например `perl`, `python` или `ruby`, убедитесь, что `command_interpreter` установлен корректно. Например, для Perl добавьте `PERL=${PERL}` в `SUB_LIST` и используйте `%%PERL%%`. В противном случае,
++
+[source, shell]
+....
+# service name stop
+....
++
+вероятно, не будет работать корректно. Дополнительную информацию смотрите в man:service[8].
+. Проверено, что все вхождения [.filename]#/usr/local# заменены на `%%PREFIX%%`?
+. Делаются ли присваивания переменным по умолчанию после `load_rc_config`?
+. Используются ли пустые строки при присвоении значений по умолчанию? Такие присвоения должны быть удалены, но перепроверьте, что эти параметры задокументированы в комментариях в начале файла.
+. Действительно ли в сценариях используются значения, присвоенные переменным?
+. Являются ли опции, перечисленные в стандартном _name_`_flags`, обязательными? Если да, они должны быть в `command_args`. Флаг `-d` здесь, как красный флаг (простите за каламбур), так как обычно это опция для "демонизации" процесса и, следовательно, фактически обязательна.
+. `_name__flags` никогда не должны включаться в `command_args` (и наоборот, хотя такая ошибка встречается реже).
+. Выполняет ли скрипт любой код безусловно? Это не приветствуется. Обычно такие вещи должны обрабатываться через `start_precmd`.
+. Все логические проверки должны использовать функцию `checkyesno`. Не допускаются самодельные проверки на `[Yy][Ee][Ss]` и т.п.
+. Если есть цикл (например, ожидание запуска чего-либо), есть ли в нём счётчик для завершения цикла? Мы не хотим, чтобы загрузка зависала навсегда в случае ошибки.
+. Создает ли скрипт файлы или каталоги, требующие определенных разрешений, например, [.filename]#pid#, который должен принадлежать пользователю, запускающему процесс? Вместо традиционной последовательности man:touch[1]/man:chown[8]/man:chmod[1] рассмотрите использование man:install[1] с соответствующими аргументами командной строки, чтобы выполнить всю процедуру за один шаг.
+
+[[users-and-groups]]
+== Добавление пользователей и групп
+
+Некоторые порты требуют наличия определённой учётной записи пользователя, обычно для демонов, работающих от имени этого пользователя. Для таких портов выберите _уникальный_ UID в диапазоне от 50 до 999 и зарегистрируйте его в [.filename]#ports/UIDs# (для пользователей) и [.filename]#ports/GIDs# (для групп). Уникальный идентификатор должен быть одинаковым для пользователей и групп.
+
+Пожалуйста, приложите патч для этих двух файлов, если требуется создать нового пользователя или группу для порта.
+
+Затем используйте `USERS` и `GROUPS` в [.filename]#Makefile#, и пользователь будет автоматически создан при установке порта.
+
+[.programlisting]
+....
+USERS=	pulse
+GROUPS=	pulse pulse-access pulse-rt
+....
+
+Текущий список зарезервированных UID и GID можно найти в [.filename]#ports/UIDs# и [.filename]#ports/GIDs#.
+
+[[requiring-kernel-sources]]
+== Порты, зависящие от исходных кодов ядра
+
+Некоторые порты (например, загружаемые модули ядра) требуют исходные файлы ядра для компиляции порта. Вот правильный способ проверить, установлены ли они у пользователя:
+
+[.programlisting]
+....
+USES=	kmod
+....
+
+Помимо этой проверки, функция `kmod` учитывает большинство аспектов, которые необходимо принимать во внимание данным портам.
+
+[[go-libs]]
+== Библиотеки Go
+
+Порты не должны упаковывать или устанавливать библиотеки или исходный код Go. Порты Go должны загружать необходимые зависимости в обычное время загрузки и должны устанавливать только программы и то, что нужно пользователям, а не то, что нужно разработчикам на Go.
+
+Порты должны (в порядке предпочтения):
+
+* Использовать зависимости, включенные в исходный код пакета.
+* Получить версии зависимостей, указанные вышестоящим проектом (в случае go.mod, vendor.json или аналогичных).
+* В крайнем случае (зависимости не включены и версии не указаны точно) получить версии зависимостей, доступные на момент разработки/выпуска вышестоящего проекта.
+
+[[haskell-libs]]
+== Библиотеки Haskell
+
+Как и в случае с языком Go, коллекция портов не должна включать или устанавливать библиотеки Haskell. Порты Haskell должны статически линковаться со своими зависимостями и загружать все распространяемые файлы на этапе fetch.
+
+[[shell-completion]]
+== Файлы завершения командной оболочки
+
+Многие современные оболочки (включая bash, fish, tcsh и zsh) поддерживают табуляцию для параметров и/или опций. Эта поддержка обычно обеспечивается файлами завершения, которые содержат определения того, как будет работать завершение по табуляции для определённой команды. Порты иногда поставляются со своими собственными файлами завершения, или разработчики портов могут создавать их самостоятельно.
+
+Если доступны файлы завершения, их всегда следует устанавливать. Нет необходимости создавать для этого опцию. Однако если опция используется, всегда включайте её в `OPTIONS_DEFAULT`.
+
+[[shell-completion-paths]]
+.Полные имена файлов завершения оболочки
+[cols="1,1,1", frame="none"]
+|===
+|`bash`
+|[.filename]#${PREFIX}/etc/bash_completion.d# or [.filename]#${PREFIX}/share/bash-completion/completions#
+|(любые уникальные имена файлов в одной из этих папок)
+
+|`fish`
+|[.filename]#${PREFIX}/share/fish/completions/${PORTNAME}.fish#
+| 
+
+|`zsh`
+|[.filename]#${PREFIX}/share/zsh/site-functions/_${PORTNAME}#
+| 
+|===
+
+Не регистрируйте зависимости от самих оболочек.

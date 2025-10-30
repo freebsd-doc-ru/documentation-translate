@@ -1,0 +1,456 @@
+---
+description: 'Как получить FreeBSD: наборы CD и DVD, FTP-сайты и как установить и использовать Git'
+next: books/handbook/bibliography
+params:
+  path: /books/handbook/mirrors/
+part: 'Часть V. Приложения'
+prev: books/handbook/partv
+showBookMenu: true
+tags: ["Obtaining", "CD", "DVD", "FTP", "Git"]
+title: 'Приложение A. Получение FreeBSD'
+weight: 41
+---
+
+[appendix]
+= Получение FreeBSD
+:doctype: book
+:toc: macro
+:toclevels: 1
+:icons: font
+:sectnums:
+:sectnumlevels: 6
+:sectnumoffset: A
+:partnums:
+:source-highlighter: rouge
+:experimental:
+:images-path: books/handbook/mirrors/
+
+ifdef::env-beastie[]
+ifdef::backend-html5[]
+:imagesdir: ../../../../images/{images-path}
+endif::[]
+ifndef::book[]
+include::shared/authors.adoc[]
+include::shared/mirrors.adoc[]
+include::shared/releases.adoc[]
+include::shared/attributes/attributes-{{% lang %}}.adoc[]
+include::shared/{{% lang %}}/teams.adoc[]
+include::shared/{{% lang %}}/mailing-lists.adoc[]
+include::shared/{{% lang %}}/urls.adoc[]
+toc::[]
+endif::[]
+ifdef::backend-pdf,backend-epub3[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+endif::[]
+
+ifndef::env-beastie[]
+toc::[]
+include::../../../../../shared/asciidoctor.adoc[]
+endif::[]
+
+[[mirrors]]
+== Зеркала
+
+Официальные зеркала проекта FreeBSD состоят из множества машин, управляемых администраторами кластера проекта, и используют GeoDNS для направления пользователей к ближайшему доступному зеркалу. Текущие местоположения: Австралия, Бразилия, Япония (две площадки), Малайзия, Южная Африка, Швеция, Тайвань, Соединённые Штаты Америки (Калифорния, Иллинойс — две площадки, Нью-Джерси и Вашингтон).
+
+Официальный сервис зеркал:
+
+[cols="1,1,3"]
+|===
+| Имя Сервиса | Протоколы | Больше информации
+
+| **cgit.FreeBSD.org**
+| link:https://cgit.FreeBSD.org/[https]
+| Веб-интерфейс для Git-репозиториев FreeBSD.
+
+| **docs.FreeBSD.org**
+| link:https://docs.FreeBSD.org/[https]
+| Портал документации FreeBSD.
+
+| **download.FreeBSD.org**
+| link:https://download.FreeBSD.org/[https] link:ftp://download.FreeBSD.org/pub/FreeBSD/[ftp]
+| То же содержимое, что и на `ftp.FreeBSD.org`, `ftp` — устаревшее название; рекомендуется использовать `download.FreeBSD.org`.
+
+| **git.FreeBSD.org**
+| git по `https` и `ssh`
+| Подробнее в разделе link:https://docs.freebsd.org/en/books/handbook/mirrors/#git[использование git].
+
+| **pkg.FreeBSD.org**
+| man:pkg[8] через `http` и `https`
+| Официальные репозитории пакетов FreeBSD, используемые программой man:pkg[8].
+
+| **vuxml.FreeBSD.org** / **www.VuXML.org**
+| link:https://www.vuxml.org/[https]
+| Страница проекта FreeBSD VuXML. `pkg audit` получает список уязвимостей из этой службы.
+
+| **www.FreeBSD.org**
+| link:https://www.FreeBSD.org/[https]
+| Веб-сайт FreeBSD.
+|===
+
+Все официальные зеркала поддерживают IPv4 и IPv6.
+
+http://ftp-archive.FreeBSD.org не входит в инфраструктуру GeoDNS, размещается только в одном месте (США).
+
+Проект ищет новые площадки; желающие выступить спонсорами, пожалуйста, свяжитесь с командой администраторов кластера для получения дополнительной информации.
+
+В настоящее время реализуется проект по предоставлению доступа к **download.FreeBSD.org** и **pkg.FreeBSD.org** через link:https://www.fastly.com[Fastly], использующий CDN-ускорение, кэширование и пропускную способность этой сети для распространения образов и пакетов FreeBSD среди нашей глобально распределённой пользовательской базы.
+
+Список зеркал, поддерживаемый сообществом и другими компаниями:
+
+[cols="1,1,3"]
+|===
+|Страна | Имя сайта | Протоколы
+
+| Австралия icon:envelope[link=mailto:{mirrors-australia-email}, title="mirror contact"]
+| ftp.au.FreeBSD.org
+| link:http://ftp.au.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.au.FreeBSD.org/pub/FreeBSD[http_v6] link:rsync://ftp.au.FreeBSD.org[rsync] link:rsync://ftp.au.FreeBSD.org[rsync_v6]
+
+| 
+| ftp3.au.FreeBSD.org
+| link:http://ftp3.au.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp3.au.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp3.au.FreeBSD.org[rsync]
+
+| Австрия icon:envelope[link=mailto:{mirrors-austria-email}, title="mirror contact"]
+| ftp.at.FreeBSD.org
+| link:http://ftp.at.FreeBSD.org/pub/FreeBSD/[http] link:http://ftp.at.FreeBSD.org/pub/FreeBSD/[http_v6] link:ftp://ftp.at.FreeBSD.org/pub/FreeBSD/[ftp] link:ftp://ftp.at.FreeBSD.org/pub/FreeBSD/[ftp_v6] link:rsync://ftp.at.FreeBSD.org/pub/FreeBSD/[rsync] link:rsync://ftp.at.FreeBSD.org/pub/FreeBSD/[rsync_v6]
+
+| Бразилия icon:envelope[link=mailto:{mirrors-brazil-email}, title="mirror contact"]
+| ftp2.br.FreeBSD.org
+| link:http://ftp2.br.FreeBSD.org/FreeBSD[http] link:rsync://ftp2.br.FreeBSD.org[rsync] link:rsync://ftp2.br.FreeBSD.org[rsync_v6]
+
+| 
+| ftp3.br.FreeBSD.org
+| link:http://ftp3.br.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp3.br.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp3.br.FreeBSD.org[rsync]
+
+| Болгария icon:envelope[link=mailto:{mirrors-bulgaria-email}, title="mirror contact"]
+| ftp.bg.FreeBSD.org
+| link:ftp://ftp.bg.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.bg.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.bg.FreeBSD.org[rsync] link:rsync://ftp.bg.FreeBSD.org[rsync_v6]
+
+| Чехия icon:envelope[link=mailto:{mirrors-czech-email}, title="mirror contact"]
+| ftp.cz.FreeBSD.org
+| link:http://ftp.cz.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.cz.FreeBSD.org/pub/FreeBSD[http_v6] link:rsync://ftp.cz.FreeBSD.org[rsync] link:rsync://ftp.cz.FreeBSD.org[rsync_v6]
+
+| Дания icon:envelope[link=mailto:{mirrors-denmark-email}, title="mirror contact"]
+| ftp.dk.FreeBSD.org
+| link:http://ftp.dk.FreeBSD.org/FreeBSD/[http] link:http://ftp.dk.FreeBSD.org/FreeBSD/[http_v6] link:ftp://ftp.dk.FreeBSD.org/FreeBSD/[ftp] link:ftp://ftp.dk.FreeBSD.org/FreeBSD/[ftp_v6] link:rsync://ftp.dk.FreeBSD.org/FreeBSD/[rsync] link:rsync://ftp.dk.FreeBSD.org/FreeBSD/[rsync_v6]
+
+| Финляндия icon:envelope[link=mailto:{mirrors-finland-email}, title="mirror contact"]
+| ftp.fi.FreeBSD.org
+| link:ftp://ftp.fi.FreeBSD.org/pub/FreeBSD[ftp]
+
+| Франция icon:envelope[link=mailto:{mirrors-france-email}, title="mirror contact"]
+| ftp.fr.FreeBSD.org
+| link:http://ftp.fr.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.fr.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.fr.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.fr.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.fr.FreeBSD.org[rsync] link:rsync://ftp.fr.FreeBSD.org[rsync_v6]
+
+| 
+| ftp3.fr.FreeBSD.org
+| link:ftp://ftp3.fr.FreeBSD.org/pub/FreeBSD[ftp]
+
+| 
+| ftp6.fr.FreeBSD.org
+| link:http://ftp6.fr.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp6.fr.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp6.fr.FreeBSD.org[rsync]
+
+| Германия icon:envelope[link=mailto:{mirrors-germany-email}, title="mirror contact"]
+| ftp.de.FreeBSD.org
+| link:http://ftp.de.FreeBSD.org/FreeBSD[http] link:http://ftp.de.FreeBSD.org/FreeBSD[http_v6] link:https://ftp.de.FreeBSD.org/FreeBSD[https] link:https://ftp.de.FreeBSD.org/FreeBSD[https_v6] link:ftp://ftp.de.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.de.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.de.FreeBSD.org/FreeBSD[rsync] link:rsync://ftp.de.FreeBSD.org/FreeBSD[rsync_v6]
+
+| 
+| ftp1.de.FreeBSD.org
+| link:http://ftp1.de.FreeBSD.org/pub/FreeBSD[http] link:http://ftp1.de.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp1.de.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp1.de.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp1.de.FreeBSD.org[rsync] link:rsync://ftp1.de.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.de.FreeBSD.org
+| link:http://ftp2.de.FreeBSD.org/pub/FreeBSD[http] link:http://ftp2.de.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp2.de.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp2.de.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp2.de.FreeBSD.org[rsync] link:rsync://ftp2.de.FreeBSD.org[rsync_v6]
+
+| 
+| ftp5.de.FreeBSD.org
+| link:ftp://ftp5.de.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp5.de.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| 
+| ftp7.de.FreeBSD.org
+| link:http://ftp7.de.FreeBSD.org/pub/FreeBSD[http] link:http://ftp7.de.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp7.de.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp7.de.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| Греция icon:envelope[link=mailto:{mirrors-greece-email}, title="mirror contact"]
+| ftp.gr.FreeBSD.org
+| link:http://ftp.gr.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.gr.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.gr.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.gr.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| 
+| ftp2.gr.FreeBSD.org
+| link:http://ftp2.gr.FreeBSD.org/pub/FreeBSD[http] link:http://ftp2.gr.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp2.gr.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp2.gr.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp2.gr.FreeBSD.org[rsync]
+
+| Япония icon:envelope[link=mailto:{mirrors-japan-email}, title="mirror contact"]
+| ftp.jp.FreeBSD.org
+| link:http://ftp.jp.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.jp.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.jp.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.jp.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.jp.FreeBSD.org[rsync] link:rsync://ftp.jp.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.jp.FreeBSD.org
+| link:ftp://ftp2.jp.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp2.jp.FreeBSD.org[rsync] link:rsync://ftp2.jp.FreeBSD.org[rsync_v6]
+
+| 
+| ftp3.jp.FreeBSD.org
+| link:http://ftp3.jp.FreeBSD.org/pub/FreeBSD[http] link:rsync://ftp3.jp.FreeBSD.org[rsync]
+
+| 
+| ftp4.jp.FreeBSD.org
+| link:ftp://ftp4.jp.FreeBSD.org/pub/FreeBSD[ftp]
+
+| 
+| ftp6.jp.FreeBSD.org
+| link:http://ftp6.jp.FreeBSD.org/pub/FreeBSD[http] link:http://ftp6.jp.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp6.jp.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp6.jp.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp6.jp.FreeBSD.org[rsync] link:rsync://ftp6.jp.FreeBSD.org[rsync_v6]
+
+| Казахстан icon:envelope[link=mailto:support@ps.kz, title="mirror contact"]
+| mirror.ps.kz
+| http://mirror.ps.kz/freebsd[http] link:ftp://mirror.ps.kz/freebsd[ftp]
+
+| 
+| mirror.neolabs.kz
+| link:http://mirror.neolabs.kz/freebsd[http] link:ftp://mirror.neolabs.kz/freebsd[ftp]
+
+| Корея icon:envelope[link=mailto:{mirrors-korea-email}, title="mirror contact"]
+| ftp.kr.FreeBSD.org
+| link:http://ftp.kr.FreeBSD.org/pub/FreeBSD[http] link:https://ftp.kr.FreeBSD.org/pub/FreeBSD[https] link:ftp://ftp.kr.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp.kr.FreeBSD.org[rsync]
+
+| 
+| ftp2.kr.FreeBSD.org
+| link:rsync://ftp2.kr.FreeBSD.org[rsync]
+
+| Латвия icon:envelope[link=mailto:{mirrors-latvia-email}, title="mirror contact"]
+| ftp.lv.FreeBSD.org
+| link:http://ftp.lv.FreeBSD.org/freebsd[http] link:ftp://ftp.lv.FreeBSD.org/freebsd[ftp]
+
+| Нидерланды icon:envelope[link=mailto:{mirrors-netherlands-email}, title="mirror contact"]
+| ftp.nl.FreeBSD.org
+| link:http://ftp.nl.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.nl.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.nl.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.nl.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.nl.FreeBSD.org[rsync] link:rsync://ftp.nl.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.nl.FreeBSD.org
+| link:http://ftp2.nl.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp2.nl.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp2.nl.FreeBSD.org[rsync]
+
+| 
+| mirror.nl.altushost.com
+| link:https://mirror.nl.altushost.com/FreeBSD[https]
+
+| Новая Зеландия icon:envelope[link=mailto:{mirrors-new-zealand-email}, title="mirror contact"]
+| ftp.nz.FreeBSD.org
+| link:http://ftp.nz.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp.nz.FreeBSD.org/pub/FreeBSD[ftp]
+
+| Норвегия icon:envelope[link=mailto:{mirrors-norway-email}, title="mirror contact"]
+| ftp.no.FreeBSD.org
+| link:ftp://ftp.no.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.no.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.no.FreeBSD.org[rsync] link:rsync://ftp.no.FreeBSD.org[rsync_v6]
+
+| Польша icon:envelope[link=mailto:{mirrors-poland-email}, title="mirror contact"]
+| ftp.pl.FreeBSD.org
+| link:http://ftp.pl.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.pl.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.pl.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp.pl.FreeBSD.org[rsync] link:rsync://ftp.pl.FreeBSD.org[rsync_v6]
+
+| Россия icon:envelope[link=mailto:{mirrors-russia-email}, title="mirror contact"]
+| ftp.ru.FreeBSD.org
+| link:http://ftp.ru.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.ru.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.ru.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.ru.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.ru.FreeBSD.org[rsync] link:rsync://ftp.ru.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.ru.FreeBSD.org
+| link:https://ftp2.ru.FreeBSD.org/pub/FreeBSD[https] link:ftp://ftp2.ru.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp2.ru.FreeBSD.org[rsync]
+
+| Словения icon:envelope[link=mailto:{mirrors-slovenia-email}, title="mirror contact"]
+| ftp.si.FreeBSD.org
+| link:http://ftp.si.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.si.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.si.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.si.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| ЮАР icon:envelope[link=mailto:{mirrors-south-africa-email}, title="mirror contact"]
+| ftp.za.FreeBSD.org
+| link:https://ftp.za.FreeBSD.org/pub/FreeBSD[https] link:https://ftp.za.FreeBSD.org/pub/FreeBSD[https_v6] link:rsync://ftp.za.FreeBSD.org[rsync] link:rsync://ftp.za.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.za.FreeBSD.org
+| link:http://ftp2.za.FreeBSD.org/pub/FreeBSD[http] link:http://ftp2.za.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp2.za.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| 
+| ftp4.za.FreeBSD.org
+| link:http://ftp4.za.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp4.za.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp4.za.FreeBSD.org[rsync]
+
+| Швеция icon:envelope[link=mailto:{mirrors-sweden-email}, title="mirror contact"]
+| ftp.se.FreeBSD.org
+| link:http://ftp.se.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.se.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.se.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.se.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.se.FreeBSD.org[rsync] link:rsync://ftp.se.FreeBSD.org[rsync_v6]
+
+| 
+| mirror.se.altushost.com
+| link:https://mirror.se.altushost.com/FreeBSD[https]
+
+| Тайвань icon:envelope[link=mailto:{mirrors-taiwan-email}, title="mirror contact"]
+| ftp4.tw.FreeBSD.org
+| link:https://ftp4.tw.FreeBSD.org/pub/FreeBSD[https] link:ftp://ftp4.tw.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp4.tw.FreeBSD.org[rsync]
+
+| 
+| ftp5.tw.FreeBSD.org
+| link:http://ftp5.tw.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp5.tw.FreeBSD.org/pub/FreeBSD[ftp]
+
+| Украина icon:envelope[link=mailto:{mirrors-ukraine-email}, title="mirror contact"]
+| ftp.ua.FreeBSD.org
+| link:http://ftp.ua.FreeBSD.org/pub/FreeBSD[http] link:ftp://ftp.ua.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.ua.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.ua.FreeBSD.org[rsync] link:rsync://ftp.ua.FreeBSD.org[rsync_v6]
+
+| Великобритания icon:envelope[link=mailto:{mirrors-uk-email}, title="mirror contact"]
+| ftp.uk.FreeBSD.org
+| link:http://ftp.uk.FreeBSD.org/pub/FreeBSD[http] link:http://ftp.uk.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp.uk.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp.uk.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp.uk.FreeBSD.org[rsync] link:rsync://ftp.uk.FreeBSD.org[rsync_v6]
+
+| 
+| ftp2.uk.FreeBSD.org
+| link:http://ftp2.uk.FreeBSD.org/pub/FreeBSD[http] link:http://ftp2.uk.FreeBSD.org/pub/FreeBSD[http_v6] link:https://ftp2.uk.FreeBSD.org/pub/FreeBSD[https] link:https://ftp2.uk.FreeBSD.org/pub/FreeBSD[https_v6] link:ftp://ftp2.uk.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp2.uk.FreeBSD.org/pub/FreeBSD[ftp_v6]
+
+| Соединение штаты Америки icon:envelope[link=mailto:{mirrors-us-email}, title="mirror contact"]
+| ftp11.FreeBSD.org
+| link:http://ftp11.FreeBSD.org/pub/FreeBSD[http] link:http://ftp11.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp11.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp11.FreeBSD.org/pub/FreeBSD[ftp_v6] link:rsync://ftp11.FreeBSD.org[rsync] link:rsync://ftp11.FreeBSD.org[rsync_v6]
+
+| 
+| ftp14.FreeBSD.org
+| link:ftp://ftp14.FreeBSD.org/pub/FreeBSD[ftp] link:rsync://ftp14.FreeBSD.org[rsync] (Former official tier 1)
+
+| 
+| ftp5.FreeBSD.org
+| link:http://ftp5.FreeBSD.org/pub/FreeBSD[http] link:http://ftp5.FreeBSD.org/pub/FreeBSD[http_v6] link:ftp://ftp5.FreeBSD.org/pub/FreeBSD[ftp] link:ftp://ftp5.FreeBSD.org/pub/FreeBSD[ftp_v6]
+|===
+
+Текущий список протоколов, поддерживаемых общедоступными зеркалами, был последний раз обновлён 31 января 2022 года, и его актуальность не гарантируется.
+
+[[git]]
+== Используя Git
+
+[[git-intro]]
+=== Введение
+
+Начиная с декабря 2020 года FreeBSD использует git в качестве основной системы контроля версий для хранения всего исходного кода и документации базовой системы. Начиная с апреля 2021 года FreeBSD использует git в качестве единственной системы контроля версий для хранения всей Коллекции портов FreeBSD.
+
+[NOTE]
+====
+Git обычно является инструментом разработчика. Пользователи могут предпочесть использование `freebsd-update` (crossref:cutting-edge[updating-upgrading-freebsdupdate,“FreeBSD Update”]) для обновления базовой системы FreeBSD.
+====
+
+В этом разделе показано, как установить Git в системе FreeBSD и использовать его для создания локальной копии репозитория исходного кода FreeBSD.
+
+[[git-install]]
+=== Установка
+
+Git можно установить из Коллекции портов или в виде пакета:
+
+[source, shell]
+....
+# pkg install git
+....
+
+[[git-usage]]
+=== Запуск Git
+
+Чтобы получить чистую копию исходников в локальную директорию, используйте `git clone`. Эта директория с файлами называется _рабочим деревом_.
+
+Git использует URL-адреса для указания репозитория. Существует три разных репозитория: `src` для исходного кода системы FreeBSD, `doc` для документации и `ports` для коллекции портов FreeBSD. Все три доступны по двум разным протоколам: HTTPS и SSH. Например, URL-адрес `https://git.FreeBSD.org/src.git` указывает на основную ветку репозитория `src`, используя протокол `https`.
+
+[[git-url-table]]
+.Таблица URL репозиториев Git FreeBSD
+[options="header,footer"]
+|=======================================================
+|Элемент | URL Git
+| Репозиторий src через HTTPS (только для чтения )             | `https://git.FreeBSD.org/src.git`
+| Репозиторий src через anon-ssh (только для чтения )          | `ssh://anongit@git.FreeBSD.org/src.git`
+| Репозиторий документации через HTTPS (только для чтения)             | `https://git.FreeBSD.org/doc.git`
+| Репозиторий документации через anon-ssh (только для чтения)          | `ssh://anongit@git.FreeBSD.org/doc.git`
+| Репозиторий портов через HTTPS (только для чтения)           | `https://git.FreeBSD.org/ports.git`
+| Репозиторий портов через anon-ssh (только для чтения )        | `ssh://anongit@git.FreeBSD.org/ports.git`
+|=======================================================
+
+Внешние зеркала, поддерживаемые участниками проекта, также доступны; дополнительную информацию можно найти в разделе crossref:mirrors[external-mirrors, Внешние зеркала].
+
+Для клонирования копии репозитория исходного кода системы FreeBSD:
+
+[source, shell]
+....
+# git clone -o freebsd https://git.FreeBSD.org/src.git /usr/src
+....
+
+Опция `-o freebsd` указывает источник (origin); по соглашению в документации FreeBSD предполагается, что источником является `freebsd`. Поскольку первоначальное извлечение должно загрузить полную ветку репозитория с сервера, это может занять некоторое время. Пожалуйста, наберитесь терпения.
+
+Изначально рабочее дерево содержит исходный код ветки `main`, которая соответствует CURRENT. Для переключения на 13-STABLE вместо этого:
+[source, shell]
+....
+# cd /usr/src
+# git checkout stable/13
+....
+
+Рабочее дерево можно обновить с помощью `git pull`. Чтобы обновить [.filename]#/usr/src#, созданный в примере выше, используйте:
+
+[source, shell]
+....
+# cd /usr/src
+# git pull --rebase
+....
+
+Обновление происходит гораздо быстрее, чем извлечение, передавая только изменённые файлы.
+
+=== Веб-интерфейс репозиториев
+
+Проект FreeBSD использует cgit в качестве веб-браузера репозиториев: link:https://cgit.FreeBSD.org/[https://cgit.FreeBSD.org/].
+
+=== Для разработчиков
+
+Для получения информации о правах на запись в репозитории см. extref:{committers-guide}[Committer's Guide, git-mini-primer].
+
+[[external-mirrors]]
+=== Внешние зеркала
+
+Эти зеркала не размещены на FreeBSD.org, но по-прежнему поддерживаются участниками проекта. Пользователи и разработчики могут клонировать или просматривать репозитории на этих зеркалах. Pull-запросы для репозиториев `doc` и `src` на GitHub принимаются; в остальном, рабочий процесс проекта с этими зеркалами всё ещё обсуждается.
+
+Codeberg::
+  - doc: https://codeberg.org/FreeBSD/freebsd-doc
+  - ports: https://codeberg.org/FreeBSD/freebsd-ports
+  - src: https://codeberg.org/FreeBSD/freebsd-src
+
+GitHub::
+  - doc: https://github.com/freebsd/freebsd-doc
+  - ports: https://github.com/freebsd/freebsd-ports
+  - src: https://github.com/freebsd/freebsd-src
+
+GitLab::
+  - doc: https://gitlab.com/FreeBSD/freebsd-doc
+  - ports: https://gitlab.com/FreeBSD/freebsd-ports
+  - src: https://gitlab.com/FreeBSD/freebsd-src
+
+=== Списки рассылки
+
+Основной список рассылки по общим вопросам использования git в проекте FreeBSD — https://lists.freebsd.org/subscription/freebsd-git[freebsd-git]. Подробнее, включая списки рассылки сообщений о коммитах, см. в главе crossref:handbook/eresources[eresources-mail, Списки рассылки].
+
+=== SSH ключи серверов
+
+* Отпечатки ключей хоста gitrepo.FreeBSD.org:
+** Отпечаток ключа ECDSA — `SHA256:seWO5D27ySURcx4bknTNKlC1mgai0whP443PAKEvvZA`
+** Отпечаток ключа ED25519 — `SHA256:lNR6i4BEOaaUhmDHBA1WJsO7H3KtvjE2r5q4sOxtIWo`
+** Отпечаток ключа RSA — `SHA256:f453CUEFXEJAXlKeEHV+ajJfeEfx9MdKQUD7lIscnQI`
+
+* Отпечатки ключей хоста git.FreeBSD.org:
+** Отпечаток ключа ECDSA — `SHA256:/UlirUAsGiitupxmtsn7f9b7zCWd0vCs4Yo/tpVWP9w`
+** Отпечаток ключа ED25519 — `SHA256:y1ljKrKMD3lDObRUG3xJ9gXwEIuqnh306tSyFd1tuZE`
+** Отпечаток ключа RSA — `SHA256:jBe6FQGoH4HjvrIVM23dcnLZk9kmpdezR/CvQzm7rJM`
+
+Они также публикуются как записи SSHFP в DNS.
+
+[[mirrors-disc]]
+== Копии на диске
+
+Копии дисков FreeBSD доступны у нескольких онлайн-продавцов:
+
+* FreeBSD Mall, Inc. +
+1164 Claremont Dr +
+Brentwood, CA +
+94513 +
+USA +
+Phone: +1 925 240-6652 +
+Fax: +1 925 674-0821 +
+Email: info@freebsdmall.com +
+Website: https://www.freebsdmall.com
+
+* Getlinux +
+Website: https://www.getlinux.fr/
+
+* Dr. Hinner EDV +
+Schäftlarnstr. 10 // 4. Stock +
+D-81371 München +
+Germany +
+Phone: +49 171 417 544 6 +
+Email: infow@hinner.de +
+Website: http://www.hinner.de/linux/freebsd.html

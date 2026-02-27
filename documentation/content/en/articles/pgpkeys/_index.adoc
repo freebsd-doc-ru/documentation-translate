@@ -1536,6 +1536,15 @@ include::{include-path}vexeduxr.key[]
 === `{alven}`
 include::{include-path}alven.key[]
 
+=== `{pouria}`
+include::{include-path}pouria.key[]
+
+=== `{siva}`
+include::{include-path}siva.key[]
+
+=== `{nxjoseph}`
+include::{include-path}nxjoseph.key[]
+
 [[pgpkeys-other]]
 == Other Cluster Account Holders
 
@@ -1559,3 +1568,6 @@ include::{include-path}mwlucas.key[]
 
 === `{dhw}`
 include::{include-path}dhw.key[]
+
+=== `{tpearson}`
+include::{include-path}tpearson.key[]

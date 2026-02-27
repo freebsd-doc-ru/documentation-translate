@@ -186,7 +186,7 @@ crossref:advanced-networking[routeflags,Commonly Seen Routing Table Flags] summa
 |Route involves references to Ethernet (link) hardware.
 |===
 
-On a FreeBSD system, the default route can defined in [.filename]#/etc/rc.conf# by specifying the IP address of the default gateway:
+On a FreeBSD system, the default route can be defined in [.filename]#/etc/rc.conf# by specifying the IP address of the default gateway:
 
 [.programlisting]
 ....
@@ -1435,7 +1435,15 @@ This example sets a static IP address:
 ....
 
 It is also possible to assign an IPv6 address to a bridge interface.
+
 To make the changes permanent, add the addressing information to [.filename]#/etc/rc.conf#.
+
+This example uses a dynamic IPv6 address:
+
+[.programlisting]
+....
+ifconfig_bridge0_ipv6="inet6 auto_linklocal accept_rtadv"
+....
 
 [NOTE]
 ====
